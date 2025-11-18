@@ -29,6 +29,16 @@ curl -X POST http://localhost:8080/api/auth/register \
   }'
 ```
 
+### Verificación de Email
+```bash
+curl -X POST http://localhost:8080/api/auth/verify-email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "juan@ejemplo.com",
+    "code": "123456"
+  }'
+```
+
 ### Health Check
 ```bash
 curl http://localhost:8080/api/auth/health
@@ -48,6 +58,19 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri "http://localhost:8080/api/auth/register" `
+    -Method Post `
+    -ContentType "application/json" `
+    -Body $body
+```
+
+### Verificación de Email
+```powershell
+$body = @{
+    email = "juan@ejemplo.com"
+    code = "123456"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8080/api/auth/verify-email" `
     -Method Post `
     -ContentType "application/json" `
     -Body $body
@@ -78,6 +101,23 @@ Content-Type: application/json
   "displayName": "Usuario Ejemplo",
   "nickname": "usuario123",
   "birthDate": "1995-05-15"
+}
+```
+
+### POST /api/auth/verify-email
+
+**URL:** `http://localhost:8080/api/auth/verify-email`  
+**Method:** POST  
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body (JSON):**
+```json
+{
+  "email": "usuario@ejemplo.com",
+  "code": "123456"
 }
 ```
 

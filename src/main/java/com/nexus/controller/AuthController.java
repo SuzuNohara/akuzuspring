@@ -2,6 +2,8 @@ package com.nexus.controller;
 
 import com.nexus.dto.RegisterRequest;
 import com.nexus.dto.RegisterResponse;
+import com.nexus.dto.VerifyEmailRequest;
+import com.nexus.dto.VerifyEmailResponse;
 import com.nexus.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,31 @@ public class AuthController {
         return ResponseEntity
             .status(HttpStatus.CREATED)
             .body(response);
+    }
+    
+    @PostMapping("/verify-email")
+    public ResponseEntity<VerifyEmailResponse> verifyEmail(@Valid @RequestBody VerifyEmailRequest request) {
+        log.info("Recibida solicitud de verificación de email para: {}", request.getEmail());
+        
+        userService.verifyEmail(request.getEmail(), request.getCode());
+        
+        VerifyEmailResponse response = VerifyEmailResponse.builder()
+            .success(true)
+            .message("Email verificado exitosamente. Tu cuenta está ahora activa.")
+            .email(request.getEmail())
+            .emailConfirmed(true)
+            .build();
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    @PostMapping("/resend-verification")
+    public ResponseEntity<String> resendVerification(@RequestParam String email) {
+        log.info("Solicitud de reenvío de código de verificación para: {}", email);
+        
+        userService.resendVerificationCode(email);
+        
+        return ResponseEntity.ok("Código de verificación reenviado exitosamente");
     }
     
     @GetMapping("/health")

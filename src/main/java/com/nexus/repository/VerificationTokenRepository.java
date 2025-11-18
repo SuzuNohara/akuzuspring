@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -29,6 +30,8 @@ public interface VerificationTokenRepository extends JpaRepository<VerificationT
         @Param("userId") Long userId,
         @Param("purpose") TokenPurpose purpose
     );
+    
+    List<VerificationToken> findByUserIdAndPurposeAndConsumedAtIsNull(Long userId, TokenPurpose purpose);
     
     void deleteByUserIdAndPurpose(Long userId, TokenPurpose purpose);
 }

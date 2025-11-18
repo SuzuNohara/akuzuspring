@@ -30,7 +30,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final VerificationTokenRepository verificationTokenRepository;
     private final PasswordEncoder passwordEncoder;
-    // private final EmailService emailService; // Lo implementaremos después
+    private final EmailService emailService;
     
     @Transactional
     public RegisterResponse registerUser(RegisterRequest request) {
@@ -77,8 +77,18 @@ public class UserService {
         // Crear token de verificación de email
         VerificationToken verificationToken = createEmailVerificationToken(user);
         
-        // TODO: Enviar email de verificación
-        // emailService.sendVerificationEmail(user.getEmail(), verificationToken.getToken());
+        // Enviar email de verificación de forma asíncrona
+        // Esto no bloqueará la respuesta del registro
+        final String userEmail = user.getEmail();
+        final String tokenCode = verificationToken.getToken();
+        new Thread(() -> {
+            try {
+                emailService.sendVerificationEmail(userEmail, tokenCode);
+                log.info("Email de verificación enviado a: {}", userEmail);
+            } catch (Exception e) {
+                log.error("Error al enviar email de verificación a {}: {}", userEmail, e.getMessage());
+            }
+        }).start();
         
         log.info("Registro completado exitosamente para usuario: {}", user.getEmail());
         
@@ -165,5 +175,100 @@ public class UserService {
         Random random = new Random();
         int code = 100000 + random.nextInt(900000);
         return String.valueOf(code);
+    }
+    
+    /**
+     * Verifica el código de email y activa la cuenta del usuario
+     * RN-02: El código tiene validez de 1 hora
+     */
+    @Transactional
+    public void verifyEmail(String email, String code) {
+        log.info("Verificando email para: {}", email);
+        
+        // Buscar usuario por email
+        User user = userRepository.findByEmail(email.toLowerCase().trim())
+            .orElseThrow(() -> new BadRequestException("Usuario no encontrado"));
+        
+        // Verificar si ya está confirmado
+        if (user.getEmailConfirmed()) {
+            log.info("El email ya está verificado para: {}", email);
+            return; // No es error, simplemente ya está verificado
+        }
+        
+        // Buscar token de verificación
+        VerificationToken token = verificationTokenRepository
+            .findLatestValidToken(user.getId(), VerificationToken.TokenPurpose.EMAIL_CONFIRM, Instant.now())
+            .orElseThrow(() -> new BadRequestException("Código de verificación no válido o expirado"));
+        
+        // Validar el código
+        if (!token.getToken().equals(code)) {
+            throw new BadRequestException("Código de verificación incorrecto");
+        }
+        
+        // Verificar expiración (RN-02: 1 hora)
+        if (token.isExpired()) {
+            throw new BadRequestException("El código de verificación ha expirado. Solicita uno nuevo.");
+        }
+        
+        // Verificar que no haya sido usado
+        if (token.isConsumed()) {
+            throw new BadRequestException("Este código ya ha sido utilizado");
+        }
+        
+        // Marcar token como consumido
+        token.setConsumedAt(Instant.now());
+        verificationTokenRepository.save(token);
+        
+        // Activar cuenta del usuario
+        user.setEmailConfirmed(true);
+        user.setAccountStatus(AccountStatus.ACTIVE);
+        userRepository.save(user);
+        
+        log.info("Email verificado exitosamente para: {}", email);
+    }
+    
+    /**
+     * Reenvía el código de verificación de email
+     */
+    @Transactional
+    public void resendVerificationCode(String email) {
+        log.info("Reenviando código de verificación para: {}", email);
+        
+        // Buscar usuario por email
+        User user = userRepository.findByEmail(email.toLowerCase().trim())
+            .orElseThrow(() -> new BadRequestException("Usuario no encontrado"));
+        
+        // Verificar si ya está confirmado
+        if (user.getEmailConfirmed()) {
+            throw new BadRequestException("El email ya está verificado");
+        }
+        
+        // Invalidar tokens anteriores no consumidos
+        verificationTokenRepository
+            .findByUserIdAndPurposeAndConsumedAtIsNull(
+                user.getId(), 
+                VerificationToken.TokenPurpose.EMAIL_CONFIRM
+            )
+            .forEach(token -> {
+                token.setConsumedAt(Instant.now());
+                verificationTokenRepository.save(token);
+            });
+        
+        // Crear nuevo token de verificación
+        VerificationToken newToken = createEmailVerificationToken(user);
+        
+        // Enviar email de forma asíncrona
+        final String userEmail = user.getEmail();
+        final String tokenCode = newToken.getToken();
+        new Thread(() -> {
+            try {
+                emailService.sendVerificationEmail(userEmail, tokenCode);
+                log.info("Email de verificación reenviado a: {}", userEmail);
+            } catch (Exception e) {
+                log.error("Error al reenviar email de verificación a {}: {}", userEmail, e.getMessage());
+            }
+        }).start();
+        
+        log.info("Código de verificación generado para: {}", email);
     }
 }

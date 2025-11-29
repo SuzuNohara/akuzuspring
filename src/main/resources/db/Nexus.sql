@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS `nexus`.`users` (
   UNIQUE INDEX `uk_users_link_code` (`link_code` ASC) VISIBLE,
   INDEX `idx_users_deleted` (`deleted_at` ASC) VISIBLE)
 ENGINE = InnoDB
-AUTO_INCREMENT = 10
+AUTO_INCREMENT = 14
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -388,6 +388,149 @@ COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
+-- Table `nexus`.`user_links`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `nexus`.`user_links` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `initiator_user_id` INT UNSIGNED NOT NULL,
+  `partner_user_id` INT UNSIGNED NOT NULL,
+  `code_in_use` VARCHAR(32) NOT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT '1',
+  `started_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `ended_at` DATETIME(3) NULL DEFAULT NULL,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `deleted_at` DATETIME(3) NULL DEFAULT NULL,
+  `couple_key` VARCHAR(64) GENERATED ALWAYS AS (concat(lpad(least(`initiator_user_id`,`partner_user_id`),10,_utf8mb4'0'),_utf8mb4'-',lpad(greatest(`initiator_user_id`,`partner_user_id`),10,_utf8mb4'0'),_utf8mb4':',`is_active`)) STORED,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uk_couple_active` (`couple_key` ASC) VISIBLE,
+  INDEX `idx_partner` (`partner_user_id` ASC, `is_active` ASC) VISIBLE,
+  INDEX `idx_code_in_use` (`code_in_use` ASC) VISIBLE,
+  INDEX `fk_ul_init` (`initiator_user_id` ASC) VISIBLE,
+  CONSTRAINT `fk_ul_part`
+    FOREIGN KEY (`partner_user_id`)
+    REFERENCES `nexus`.`users` (`id`))
+ENGINE = InnoDB
+AUTO_INCREMENT = 4
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `nexus`.`events`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `nexus`.`events` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `title` VARCHAR(255) NOT NULL,
+  `start_date_time` DATETIME NOT NULL,
+  `end_date_time` DATETIME NOT NULL,
+  `location` VARCHAR(500) NULL DEFAULT NULL,
+  `category` VARCHAR(100) NULL DEFAULT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `status` ENUM('PENDING', 'CONFIRMED', 'CANCELLED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
+  `creator_user_id` INT UNSIGNED NOT NULL,
+  `link_id` BIGINT UNSIGNED NOT NULL,
+  `creator_approved` TINYINT(1) NOT NULL DEFAULT '1',
+  `partner_approved` TINYINT(1) NOT NULL DEFAULT '0',
+  `creator_approved_at` DATETIME(3) NULL DEFAULT NULL,
+  `partner_approved_at` DATETIME(3) NULL DEFAULT NULL,
+  `is_recurring` TINYINT(1) NOT NULL DEFAULT '0',
+  `recurrence_pattern` VARCHAR(100) NULL DEFAULT NULL,
+  `color` VARCHAR(7) NULL DEFAULT NULL,
+  `reminder_minutes` INT UNSIGNED NULL DEFAULT NULL,
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  `deleted_at` DATETIME(3) NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `idx_events_creator` (`creator_user_id` ASC) VISIBLE,
+  INDEX `idx_events_link` (`link_id` ASC) VISIBLE,
+  INDEX `idx_events_time` (`start_date_time` ASC, `end_date_time` ASC) VISIBLE,
+  INDEX `idx_events_status` (`status` ASC) VISIBLE,
+  INDEX `idx_events_deleted` (`deleted_at` ASC) VISIBLE,
+  CONSTRAINT `fk_events_creator`
+    FOREIGN KEY (`creator_user_id`)
+    REFERENCES `nexus`.`users` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `fk_events_link`
+    FOREIGN KEY (`link_id`)
+    REFERENCES `nexus`.`user_links` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 22
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `nexus`.`event_exceptions`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `nexus`.`event_exceptions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT UNSIGNED NOT NULL,
+  `exception_date` DATETIME(3) NOT NULL COMMENT 'Fecha de la instancia excluida (en UTC)',
+  `exception_type` ENUM('DELETED', 'MODIFIED') NOT NULL DEFAULT 'DELETED',
+  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uk_event_exception` (`event_id` ASC, `exception_date` ASC) VISIBLE,
+  INDEX `idx_event_id` (`event_id` ASC) VISIBLE,
+  CONSTRAINT `fk_exception_event`
+    FOREIGN KEY (`event_id`)
+    REFERENCES `nexus`.`events` (`id`)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
+-- Table `nexus`.`event_reminders`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `nexus`.`event_reminders` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `event_id` BIGINT UNSIGNED NOT NULL,
+  `minutes_before` INT UNSIGNED NOT NULL COMMENT 'Minutos antes del evento para el recordatorio',
+  `label` VARCHAR(100) NULL DEFAULT NULL COMMENT 'Etiqueta descriptiva del recordatorio',
+  PRIMARY KEY (`id`),
+  INDEX `idx_event_reminders_event` (`event_id` ASC) VISIBLE,
+  CONSTRAINT `fk_event_reminders_event`
+    FOREIGN KEY (`event_id`)
+    REFERENCES `nexus`.`events` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 9
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `nexus`.`link_codes`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `nexus`.`link_codes` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(8) NOT NULL,
+  `generated_by_user_id` INT UNSIGNED NOT NULL,
+  `is_used` TINYINT(1) NOT NULL DEFAULT '0',
+  `used_by_user_id` INT UNSIGNED NULL DEFAULT NULL,
+  `used_at` TIMESTAMP NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` TIMESTAMP NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `code` (`code` ASC) VISIBLE,
+  INDEX `idx_code` (`code` ASC) VISIBLE,
+  INDEX `idx_generator_active` (`generated_by_user_id` ASC, `is_used` ASC, `expires_at` ASC) VISIBLE,
+  INDEX `idx_expires` (`expires_at` ASC) VISIBLE,
+  CONSTRAINT `fk_linkcode_generator`
+    FOREIGN KEY (`generated_by_user_id`)
+    REFERENCES `nexus`.`users` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 33
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
+
+
+-- -----------------------------------------------------
 -- Table `nexus`.`login_attempts`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `nexus`.`login_attempts` (
@@ -417,6 +560,7 @@ CREATE TABLE IF NOT EXISTS `nexus`.`pref_categories` (
   UNIQUE INDEX `uk_cat_name` (`name` ASC) VISIBLE,
   INDEX `idx_cat_deleted` (`deleted_at` ASC) VISIBLE)
 ENGINE = InnoDB
+AUTO_INCREMENT = 8
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -440,6 +584,7 @@ CREATE TABLE IF NOT EXISTS `nexus`.`preferences` (
     FOREIGN KEY (`category_id`)
     REFERENCES `nexus`.`pref_categories` (`id`))
 ENGINE = InnoDB
+AUTO_INCREMENT = 84
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -518,37 +663,6 @@ COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
--- Table `nexus`.`user_links`
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `nexus`.`user_links` (
-  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `initiator_user_id` INT UNSIGNED NOT NULL,
-  `partner_user_id` INT UNSIGNED NOT NULL,
-  `code_in_use` VARCHAR(32) NOT NULL,
-  `is_active` TINYINT(1) NOT NULL DEFAULT '1',
-  `started_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `ended_at` DATETIME(3) NULL DEFAULT NULL,
-  `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `deleted_at` DATETIME(3) NULL DEFAULT NULL,
-  `couple_key` VARCHAR(64) GENERATED ALWAYS AS (concat(lpad(least(`initiator_user_id`,`partner_user_id`),10,_utf8mb4'0'),_utf8mb4'-',lpad(greatest(`initiator_user_id`,`partner_user_id`),10,_utf8mb4'0'),_utf8mb4':',`is_active`)) STORED,
-  PRIMARY KEY (`id`),
-  UNIQUE INDEX `uk_couple_active` (`couple_key` ASC) VISIBLE,
-  INDEX `idx_partner` (`partner_user_id` ASC, `is_active` ASC) VISIBLE,
-  INDEX `idx_code_in_use` (`code_in_use` ASC) VISIBLE,
-  INDEX `fk_ul_init` (`initiator_user_id` ASC) VISIBLE,
-  CONSTRAINT `fk_ul_init`
-    FOREIGN KEY (`initiator_user_id`)
-    REFERENCES `nexus`.`users` (`id`),
-  CONSTRAINT `fk_ul_part`
-    FOREIGN KEY (`partner_user_id`)
-    REFERENCES `nexus`.`users` (`id`))
-ENGINE = InnoDB
-DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
-
-
--- -----------------------------------------------------
 -- Table `nexus`.`user_preferences`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `nexus`.`user_preferences` (
@@ -580,7 +694,7 @@ COLLATE = utf8mb4_0900_ai_ci;
 CREATE TABLE IF NOT EXISTS `nexus`.`user_profile` (
   `user_id` INT UNSIGNED NOT NULL,
   `avatar_mime` VARCHAR(255) NULL DEFAULT NULL,
-  `avatar_bytes` TINYBLOB NULL DEFAULT NULL,
+  `avatar_bytes` MEDIUMBLOB NULL DEFAULT NULL,
   `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`user_id`),
   CONSTRAINT `fk_upro_user`
@@ -622,6 +736,7 @@ CREATE TABLE IF NOT EXISTS `nexus`.`verification_tokens` (
     REFERENCES `nexus`.`users` (`id`)
     ON DELETE CASCADE)
 ENGINE = InnoDB
+AUTO_INCREMENT = 38
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
 
@@ -812,6 +927,49 @@ END$$
 USE `nexus`$$
 CREATE
 DEFINER=`root`@`localhost`
+TRIGGER `nexus`.`events_set_approved_at`
+BEFORE INSERT ON `nexus`.`events`
+FOR EACH ROW
+BEGIN
+  -- Auto-establecer creator_approved_at si se crea ya aprobado
+  IF NEW.creator_approved = 1 THEN
+    SET NEW.creator_approved_at = UTC_TIMESTAMP(3);
+  END IF;
+END$$
+
+USE `nexus`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `nexus`.`events_set_updated`
+BEFORE UPDATE ON `nexus`.`events`
+FOR EACH ROW
+BEGIN
+  SET NEW.updated_at = UTC_TIMESTAMP(3);
+  
+  -- Auto-actualizar creator_approved_at si se marca como aprobado
+  IF NEW.creator_approved = 1 AND OLD.creator_approved_at IS NULL THEN
+    SET NEW.creator_approved_at = UTC_TIMESTAMP(3);
+  END IF;
+  
+  -- Auto-actualizar partner_approved_at si se marca como aprobado
+  IF NEW.partner_approved = 1 AND OLD.partner_approved_at IS NULL THEN
+    SET NEW.partner_approved_at = UTC_TIMESTAMP(3);
+  END IF;
+  
+  -- Auto-actualizar estado basado en aprobaciones
+  -- IMPORTANTE: Solo actualizar si NO es un estado terminal (REJECTED o CANCELLED)
+  IF NEW.status != 'REJECTED' AND NEW.status != 'CANCELLED' THEN
+    IF NEW.creator_approved = 1 AND NEW.partner_approved = 1 THEN
+      SET NEW.status = 'CONFIRMED';
+    ELSEIF NEW.creator_approved = 1 AND NEW.partner_approved = 0 THEN
+      SET NEW.status = 'PENDING';
+    END IF;
+  END IF;
+END$$
+
+USE `nexus`$$
+CREATE
+DEFINER=`root`@`localhost`
 TRIGGER `nexus`.`pref_categories_set_updated`
 BEFORE UPDATE ON `nexus`.`pref_categories`
 FOR EACH ROW
@@ -844,16 +1002,6 @@ CREATE
 DEFINER=`root`@`localhost`
 TRIGGER `nexus`.`user_app_config_set_updated`
 BEFORE UPDATE ON `nexus`.`user_app_config`
-FOR EACH ROW
-BEGIN
-  SET NEW.updated_at = UTC_TIMESTAMP(3);
-END$$
-
-USE `nexus`$$
-CREATE
-DEFINER=`root`@`localhost`
-TRIGGER `nexus`.`user_links_set_updated`
-BEFORE UPDATE ON `nexus`.`user_links`
 FOR EACH ROW
 BEGIN
   SET NEW.updated_at = UTC_TIMESTAMP(3);

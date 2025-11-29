@@ -5,17 +5,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VerifyEmailResponse {
-    
-    private boolean success;
+public class LinkCodeResponse {
+    private String code;
+    private Instant expiresAt;
+    private int validityMinutes;
     private String message;
-    private Long userId;
-    private String email;
-    private String displayName;
-    private String nickname;
-    private boolean emailConfirmed;
 }

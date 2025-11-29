@@ -3,16 +3,19 @@ package com.nexus.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.Instant;
+import java.util.stream.Stream;
 
 @Entity
 @Table(name = "verification_tokens")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,7 +33,7 @@ public class VerificationToken {
     @Column(nullable = false, unique = true)
     private String token;
     
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = TokenPurposeConverter.class)
     @Column(nullable = false, length = 20)
     private TokenPurpose purpose;
     
@@ -56,6 +59,33 @@ public class VerificationToken {
         
         public String getValue() {
             return value;
+        }
+        
+        public static TokenPurpose fromValue(String value) {
+            return Stream.of(TokenPurpose.values())
+                .filter(purpose -> purpose.getValue().equals(value))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown value: " + value));
+        }
+    }
+    
+    @Converter(autoApply = true)
+    public static class TokenPurposeConverter implements AttributeConverter<TokenPurpose, String> {
+        
+        @Override
+        public String convertToDatabaseColumn(TokenPurpose purpose) {
+            if (purpose == null) {
+                return null;
+            }
+            return purpose.getValue();
+        }
+        
+        @Override
+        public TokenPurpose convertToEntityAttribute(String value) {
+            if (value == null) {
+                return null;
+            }
+            return TokenPurpose.fromValue(value);
         }
     }
     

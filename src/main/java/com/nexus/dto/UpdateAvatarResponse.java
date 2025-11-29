@@ -9,13 +9,15 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VerifyEmailResponse {
+public class UpdateAvatarResponse {
     
     private boolean success;
+    
     private String message;
-    private Long userId;
-    private String email;
-    private String displayName;
-    private String nickname;
-    private boolean emailConfirmed;
+    
+    /**
+     * URL del avatar actualizado
+     * Ejemplo: "/api/profile/1/avatar"
+     */
+    private String avatarUrl;
 }

@@ -32,7 +32,7 @@ public class UserProfile {
     private String avatarMime;
     
     @Lob
-    @Column(name = "avatar_bytes", columnDefinition = "TINYBLOB")
+    @Column(name = "avatar_bytes", columnDefinition = "MEDIUMBLOB")
     private byte[] avatarBytes;
     
     @LastModifiedDate

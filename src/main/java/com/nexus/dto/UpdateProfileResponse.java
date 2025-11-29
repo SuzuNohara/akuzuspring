@@ -5,17 +5,20 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class VerifyEmailResponse {
+public class UpdateProfileResponse {
     
-    private boolean success;
-    private String message;
     private Long userId;
     private String email;
     private String displayName;
     private String nickname;
-    private boolean emailConfirmed;
+    private Boolean emailConfirmed;
+    private Boolean emailChanged;
+    private String message;
+    private Instant updatedAt;
 }

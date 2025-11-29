@@ -3,8 +3,9 @@ package com.nexus.entity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -15,7 +16,8 @@ import com.nexus.model.AccountStatus;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -50,8 +52,18 @@ public class User {
     @Column(name = "link_code_updated_at", nullable = false)
     private Instant linkCodeUpdatedAt;
     
+    @Column(name = "fcm_token", length = 500)
+    private String fcmToken;
+    
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+    
+    // RN-03: Control de intentos fallidos de inicio de sesión
+    @Column(name = "failed_login_attempts", nullable = false)
+    private Integer failedLoginAttempts = 0;
+    
+    @Column(name = "account_locked_until")
+    private Instant accountLockedUntil;
     
     @Column(name = "birth_date", nullable = false)
     private LocalDate birthDate;
@@ -90,6 +102,9 @@ public class User {
         }
         if (Boolean.TRUE.equals(termsAccepted) && termsAcceptedAt == null) {
             termsAcceptedAt = Instant.now();
+        }
+        if (failedLoginAttempts == null) {
+            failedLoginAttempts = 0;
         }
     }
 }

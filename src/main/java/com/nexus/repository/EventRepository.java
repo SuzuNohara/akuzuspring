@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -110,4 +111,14 @@ public interface EventRepository extends JpaRepository<Event, Long> {
            "ORDER BY e.startDateTime ASC")
     List<Event> findUpcomingEventsForReminders(@Param("now") LocalDateTime now, 
                                               @Param("futureTime") LocalDateTime futureTime);
+    
+    // Buscar eventos por creador en un rango de fechas (para detectar disponibilidad)
+    @Query("SELECT e FROM Event e WHERE e.creator.id = :userId AND e.deletedAt IS NULL AND " +
+           "e.status != 'CANCELLED' AND " +
+           "((e.startDateTime BETWEEN :startDate AND :endDate) OR " +
+           "(e.endDateTime BETWEEN :startDate AND :endDate) OR " +
+           "(e.startDateTime <= :startDate AND e.endDateTime >= :endDate))")
+    List<Event> findByCreatorIdAndStartDateTimeBetween(@Param("userId") Long userId,
+                                                         @Param("startDate") Instant startDate,
+                                                         @Param("endDate") Instant endDate);
 }

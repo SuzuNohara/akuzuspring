@@ -52,6 +52,7 @@ public class EventService {
     @Transactional
     public CreateEventResponse createEvent(Long userId, CreateEventRequest request) {
         log.info("Usuario {} creando evento: {}", userId, request.getTitle());
+        log.info("Recurrencia - isRecurring: {}, pattern: {}", request.getIsRecurring(), request.getRecurrencePattern());
         
         // 1. Validar que el usuario existe y está activo
         User creator = userRepository.findActiveById(userId)
@@ -90,6 +91,7 @@ public class EventService {
         // 5. Guardar el evento
         Event savedEvent = eventRepository.save(event);
         log.info("Evento {} creado exitosamente con ID: {}", savedEvent.getTitle(), savedEvent.getId());
+        log.info("Evento guardado - isRecurring: {}, pattern: {}", savedEvent.getIsRecurring(), savedEvent.getRecurrencePattern());
         
         // 5.1. Crear recordatorios si existen
         if (request.getReminders() != null && !request.getReminders().isEmpty()) {

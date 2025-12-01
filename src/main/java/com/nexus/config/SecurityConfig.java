@@ -35,6 +35,7 @@ public class SecurityConfig {
                 .requestMatchers("/link/**").permitAll()
                 .requestMatchers("/preferences/**").permitAll()
                 .requestMatchers("/events/**").permitAll()
+                .requestMatchers("/calendars/**").permitAll()
                 .requestMatchers("/health").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()

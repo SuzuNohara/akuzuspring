@@ -78,12 +78,22 @@ public class ExternalCalendarService {
             .findByUserIdAndDeviceCalendarId(userId, deviceCalendarId)
             .orElseThrow(() -> new RuntimeException("Calendario no encontrado"));
 
-        // Soft delete: marcar como inactivo
+        // Eliminar todos los eventos asociados a este calendario
+        List<ExternalEvent> eventsToDelete = externalEventRepository
+            .findByExternalCalendarId(calendar.getId());
+        
+        if (!eventsToDelete.isEmpty()) {
+            log.info("Eliminando {} eventos asociados al calendario {}", 
+                eventsToDelete.size(), calendar.getId());
+            externalEventRepository.deleteAll(eventsToDelete);
+        }
+
+        // Soft delete del calendario: marcar como inactivo
         calendar.setIsActive(false);
         calendar.setSyncEnabled(false);
         externalCalendarRepository.save(calendar);
 
-        log.info("Calendario desvinculado: {}", calendar.getId());
+        log.info("Calendario desvinculado y {} eventos eliminados", eventsToDelete.size());
     }
 
     /**

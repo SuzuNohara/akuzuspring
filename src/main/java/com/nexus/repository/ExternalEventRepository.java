@@ -27,7 +27,17 @@ public interface ExternalEventRepository extends JpaRepository<ExternalEvent, Lo
     );
     
     @Query("SELECT e FROM ExternalEvent e WHERE e.externalCalendarId IN :calendarIds " +
-           "AND e.startDatetime <= :endDate AND e.endDatetime >= :startDate " +
+           "AND (" +
+           "  (e.startDatetime <= :endDate AND e.endDatetime >= :startDate) " + // Eventos normales en el rango
+           "  OR (" + // O eventos recurrentes que podrían tener ocurrencias en el rango
+           "    e.recurrenceRule IS NOT NULL " +
+           "    AND (" +
+           "      e.rruleUntilUtc IS NULL " + // Recurrencia sin límite
+           "      OR e.rruleUntilUtc >= :startDate" + // O recurrencia que termina después del inicio del rango
+           "    )" +
+           "    AND e.rruleDtstartUtc <= :endDate" + // Y que empezó antes del final del rango
+           "  )" +
+           ") " +
            "AND e.deletedAt IS NULL AND e.status != 'CANCELLED' " +
            "ORDER BY e.startDatetime ASC")
     List<ExternalEvent> findEventsByCalendarsAndDateRange(

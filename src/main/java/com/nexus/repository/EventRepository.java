@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -37,6 +36,23 @@ public interface EventRepository extends JpaRepository<Event, Long> {
            "ORDER BY e.startDateTime ASC")
     List<Event> findByUserIdAndNotDeleted(@Param("userId") Long userId);
     
+    // Buscar eventos por usuario en un rango de fechas
+    @Query("SELECT DISTINCT e FROM Event e " +
+           "LEFT JOIN FETCH e.link l " +
+           "LEFT JOIN FETCH l.initiatorUser " +
+           "LEFT JOIN FETCH l.partnerUser " +
+           "LEFT JOIN FETCH e.creator " +
+           "WHERE e.deletedAt IS NULL AND " +
+           "(e.creator.id = :userId OR " +
+           "(e.link.initiatorUser.id = :userId OR e.link.partnerUser.id = :userId)) AND " +
+           "((e.startDateTime BETWEEN :startDate AND :endDate) OR " +
+           "(e.endDateTime BETWEEN :startDate AND :endDate) OR " +
+           "(e.startDateTime <= :startDate AND e.endDateTime >= :endDate)) " +
+           "ORDER BY e.startDateTime ASC")
+    List<Event> findByUserIdAndDateRange(@Param("userId") Long userId,
+                                         @Param("startDate") Instant startDate,
+                                         @Param("endDate") Instant endDate);
+    
     // Buscar eventos pendientes de aprobación por usuario
     @Query("SELECT DISTINCT e FROM Event e " +
            "LEFT JOIN FETCH e.link l " +
@@ -63,9 +79,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
            "(e.endDateTime BETWEEN :startDate AND :endDate) OR " +
            "(e.startDateTime <= :startDate AND e.endDateTime >= :endDate)) " +
            "ORDER BY e.startDateTime ASC")
-    List<Event> findByLinkIdAndDateRange(@Param("linkId") Long linkId, 
-                                        @Param("startDate") LocalDateTime startDate,
-                                        @Param("endDate") LocalDateTime endDate);
+    List<Event> findByLinkIdAndDateRange(@Param("linkId") Long linkId,
+                                         @Param("startDate") Instant startDate,
+                                         @Param("endDate") Instant endDate);
     
     // Buscar eventos por estado
     @Query("SELECT e FROM Event e " +
@@ -109,8 +125,8 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT e FROM Event e WHERE e.status = 'CONFIRMED' AND e.deletedAt IS NULL AND " +
            "e.startDateTime BETWEEN :now AND :futureTime AND e.reminderMinutes IS NOT NULL " +
            "ORDER BY e.startDateTime ASC")
-    List<Event> findUpcomingEventsForReminders(@Param("now") LocalDateTime now, 
-                                              @Param("futureTime") LocalDateTime futureTime);
+    List<Event> findUpcomingEventsForReminders(@Param("now") Instant now, 
+                                              @Param("futureTime") Instant futureTime);
     
     // Buscar eventos por creador en un rango de fechas (para detectar disponibilidad)
     @Query("SELECT e FROM Event e WHERE e.creator.id = :userId AND e.deletedAt IS NULL AND " +

@@ -30,13 +30,16 @@
         <jacoco.version>0.8.13</jacoco.version>
 
         <!-- Puerta 1 - literal, el 80 de .localsettings, por clase, sobre la lista vigilada.
-             Al cubrir una clase se anade aqui. Esta lista solo crece. -->
-        <jacoco.check.includes>com.nexus.util.*</jacoco.check.includes>
+             La lista vive en los <include> de la ejecucion `check`, no en una propiedad:
+             jacoco exige UN <include> por patron, y varios patrones separados por comas
+             dentro de un solo elemento no casan con nada, con lo que la regla quedaria
+             muerta en verde. Verificado en nexus-AUTH-01. Esa lista solo crece. -->
         <jacoco.class.line.min>0.80</jacoco.class.line.min>
         <jacoco.class.branch.min>0.80</jacoco.class.branch.min>
 
-        <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja. -->
-        <jacoco.bundle.line.min>0.0059</jacoco.bundle.line.min>
+        <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja.
+             0.0059 -> 0.0516 al cubrir com.nexus.security en nexus-AUTH-01. -->
+        <jacoco.bundle.line.min>0.0516</jacoco.bundle.line.min>
     </properties>
     
     <dependencies>
@@ -134,10 +137,14 @@
       2. Test integracion -> src/test/java/.../XxxIT.java. Corre SOLO en `mvn verify`
                            (failsafe). Un contexto Spring exige base de datos: usa
                            Testcontainers (aprobado 2026-09-07), no H2.
-      3. Al cubrir una clase, ANADIRLA a <jacoco.check.includes>. Desde ese momento queda
-         sujeta al 80 % de linea y de rama y no puede bajar. Esa lista solo crece.
+      3. Al cubrir una clase, ANADIRLA a los <include> de la regla CLASS de la ejecucion
+         `check`. Desde ese momento queda sujeta al 80 % de linea y de rama y no puede
+         bajar. Esa lista solo crece.
          OJO: el patron usa PUNTOS (com.nexus.util.*). Con barras no casa y la regla
          no se evalua: no da error, simplemente queda muerta en verde. Verificado en T-13.
+         OJO 2: un <include> por patron. Varios patrones separados por comas dentro de un
+         mismo <include> tampoco casan, y la regla muere igual de verde. Por eso la lista
+         dejo de ser una propiedad en nexus-AUTH-01.
       4. Al terminar, SUBIR <jacoco.bundle.line.min> al valor medido. Ese numero nunca baja.
          Se mide con:
            awk -F, 'NR>1{m+=$8;c+=$9} END{printf "%.4f\n", int(c/(m+c)*10000)/10000}' \
@@ -261,7 +268,11 @@
                             <rules>
                                 <rule>
                                     <element>CLASS</element>
-                                    <includes><include>${jacoco.check.includes}</include></includes>
+                                    <includes>
+                                        <include>com.nexus.util.*</include>
+                                        <!-- nexus-AUTH-01: emisor de JWT y su configuracion. -->
+                                        <include>com.nexus.security.*</include>
+                                    </includes>
                                     <limits>
                                         <limit><counter>LINE</counter><value>COVEREDRATIO</value>
                                                <minimum>${jacoco.class.line.min}</minimum></limit>

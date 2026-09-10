@@ -31,6 +31,12 @@ class JwtServiceTest {
     /** Segundo secreto de prueba, distinto del primero, para el caso de firma ajena. */
     private static final String OTHER_SECRET = "otro-secreto-de-prueba-distinto-00000000000000B0";
 
+    /**
+     * Tercer secreto de prueba, en el papel del secreto retirado por la rotacion de
+     * {@code nexus-SEC-01}. No es el valor rotado: es un literal de prueba con la misma forma.
+     */
+    private static final String ROTATED_OUT_SECRET = "secreto-retirado-por-la-rotacion-de-sec-01-00000";
+
     /** Emisor configurado, el mismo que {@code jwt.issuer} en produccion. */
     private static final String TEST_ISSUER = "nexus-api";
 
@@ -129,6 +135,16 @@ class JwtServiceTest {
                 .satisfies(error -> assertThat(error.getMessage()).doesNotContain(WEAK_SECRET))
                 .hasMessageContaining("jwt.secret")
                 .hasMessageContaining(String.valueOf(MIN_SECRET_BYTES));
+    }
+
+    @Test
+    @DisplayName("should reject token signed with the rotated out secret when verified with the current key")
+    void shouldRejectTokenSignedWithTheRotatedOutSecretWhenVerifiedWithTheCurrentKey() {
+        JwtService beforeRotation = new JwtService(properties(ROTATED_OUT_SECRET));
+        IssuedToken issuedBeforeRotation = beforeRotation.issueFor(USER_ID, USER_EMAIL);
+
+        assertThatThrownBy(() -> claimsOf(issuedBeforeRotation.token(), TEST_SECRET))
+                .isInstanceOf(SignatureException.class);
     }
 
     private static JwtProperties properties(String secret) {

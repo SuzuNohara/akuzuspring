@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -21,8 +23,12 @@ public class LoginResponse {
     private String nickname;
     private String linkCode;
     
-    // Token de sesión (si implementas JWT en el futuro)
+    // Token de sesion JWT (nexus-AUTH-01). Null en toda respuesta de fallo.
     private String token;
+
+    // Caducidad del token, ISO-8601 UTC. Evita que el cliente tenga que
+    // decodificar el JWT solo para leer exp.
+    private Instant tokenExpiresAt;
     
     // Estado de verificación
     private boolean emailConfirmed;

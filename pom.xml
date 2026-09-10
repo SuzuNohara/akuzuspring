@@ -21,6 +21,22 @@
     <properties>
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- JaCoCo: rellenadas por prepare-agent; vacias por defecto para que
+             -Djacoco.skip=true no rompa surefire/failsafe con un token sin resolver -->
+        <surefireArgLine></surefireArgLine>
+        <failsafeArgLine></failsafeArgLine>
+
+        <jacoco.version>0.8.13</jacoco.version>
+
+        <!-- Puerta 1 - literal, el 80 de .localsettings, por clase, sobre la lista vigilada.
+             Al cubrir una clase se anade aqui. Esta lista solo crece. -->
+        <jacoco.check.includes>com.nexus.util.*</jacoco.check.includes>
+        <jacoco.class.line.min>0.80</jacoco.class.line.min>
+        <jacoco.class.branch.min>0.80</jacoco.class.branch.min>
+
+        <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja. -->
+        <jacoco.bundle.line.min>0.0059</jacoco.bundle.line.min>
     </properties>
     
     <dependencies>
@@ -110,6 +126,26 @@
         </dependency>
     </dependencies>
     
+    <!--
+      ARNES DE TEST - contrato para toda actividad que anada tests (nexus-TEST-02).
+
+      1. Test unitario  -> src/test/java/.../XxxTest.java. Corre en `mvn test` (surefire).
+                           Sin contexto Spring.
+      2. Test integracion -> src/test/java/.../XxxIT.java. Corre SOLO en `mvn verify`
+                           (failsafe). Un contexto Spring exige base de datos: usa
+                           Testcontainers (aprobado 2026-09-07), no H2.
+      3. Al cubrir una clase, ANADIRLA a <jacoco.check.includes>. Desde ese momento queda
+         sujeta al 80 % de linea y de rama y no puede bajar. Esa lista solo crece.
+         OJO: el patron usa PUNTOS (com.nexus.util.*). Con barras no casa y la regla
+         no se evalua: no da error, simplemente queda muerta en verde. Verificado en T-13.
+      4. Al terminar, SUBIR <jacoco.bundle.line.min> al valor medido. Ese numero nunca baja.
+         Se mide con:
+           awk -F, 'NR>1{m+=$8;c+=$9} END{printf "%.4f\n", int(c/(m+c)*10000)/10000}' \
+               target/site/jacoco-merged/jacoco.csv
+
+      Comando canonico: `mvn clean verify` desde akuzuspring/.
+      `mvn test` corre unitarios e informe unitario, pero NO la puerta.
+    -->
     <build>
         <plugins>
             <plugin>
@@ -123,6 +159,129 @@
                         </exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+
+            <!-- T-04: surefire. Sin <version>: la aporta spring-boot-starter-parent (3.1.2).
+                 @{...} es sustitucion tardia, resuelta al arrancar el fork, despues de
+                 que prepare-agent haya poblado la propiedad. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{surefireArgLine}</argLine>
+                    <includes><include>**/*Test.java</include></includes>
+                    <excludes><exclude>**/*IT.java</exclude></excludes>
+                </configuration>
+            </plugin>
+
+            <!-- T-08: failsafe. Sin <version> y sin <executions>: las metas
+                 integration-test/verify y el classesDirectory los aporta el padre. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <argLine>@{failsafeArgLine}</argLine>
+                    <includes><include>**/*IT.java</include></includes>
+                    <systemPropertyVariables>
+                        <nexus.harness.phase>integration-test</nexus.harness.phase>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <!-- T-05/T-06: JaCoCo. excludes se aplica a informes Y a check: fuera del
+                 denominador el arranque, los DTO y las entidades. Lombok sale por @Generated
+                 gracias a lombok.config. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <configuration>
+                    <excludes>
+                        <exclude>com/nexus/NexusApplication.class</exclude>
+                        <exclude>com/nexus/dto/**</exclude>
+                        <exclude>com/nexus/entity/**</exclude>
+                        <exclude>com/nexus/model/**</exclude>
+                        <!-- UserRole.java declara `package main.java.com.nexus.entity`, asi que
+                             compila fuera del arbol com/nexus/. Ver nexus-JAVA-01. -->
+                        <exclude>main/java/**</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution><id>agent-unit</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                        <configuration>
+                            <destFile>${project.build.directory}/jacoco.exec</destFile>
+                            <propertyName>surefireArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution><id>report-unit</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco</outputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution><id>agent-it</id>
+                        <phase>pre-integration-test</phase>
+                        <goals><goal>prepare-agent-integration</goal></goals>
+                        <configuration>
+                            <destFile>${project.build.directory}/jacoco-it.exec</destFile>
+                            <propertyName>failsafeArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution><id>merge-exec</id>
+                        <phase>post-integration-test</phase>
+                        <goals><goal>merge</goal></goals>
+                        <configuration>
+                            <fileSets><fileSet>
+                                <directory>${project.build.directory}</directory>
+                                <includes><include>jacoco.exec</include><include>jacoco-it.exec</include></includes>
+                            </fileSet></fileSets>
+                            <destFile>${project.build.directory}/jacoco-merged.exec</destFile>
+                        </configuration>
+                    </execution>
+                    <execution><id>report-merged</id>
+                        <phase>verify</phase>
+                        <goals><goal>report</goal></goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <outputDirectory>${project.build.directory}/site/jacoco-merged</outputDirectory>
+                        </configuration>
+                    </execution>
+                    <!-- Declarada DESPUES de report-merged a proposito: las dos caen en `verify`
+                         y ese es el orden de ejecucion, asi que cuando la puerta rompe el build
+                         el HTML que explica por que ya existe. -->
+                    <execution><id>check</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <dataFile>${project.build.directory}/jacoco-merged.exec</dataFile>
+                            <haltOnFailure>true</haltOnFailure>
+                            <rules>
+                                <rule>
+                                    <element>CLASS</element>
+                                    <includes><include>${jacoco.check.includes}</include></includes>
+                                    <limits>
+                                        <limit><counter>LINE</counter><value>COVEREDRATIO</value>
+                                               <minimum>${jacoco.class.line.min}</minimum></limit>
+                                        <limit><counter>BRANCH</counter><value>COVEREDRATIO</value>
+                                               <minimum>${jacoco.class.branch.min}</minimum></limit>
+                                    </limits>
+                                </rule>
+                                <!-- Trinquete global. Valor MEDIDO en T-14, nunca inventado.
+                                     Sube al ampliar cobertura; no baja nunca. -->
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit><counter>LINE</counter><value>COVEREDRATIO</value>
+                                               <minimum>${jacoco.bundle.line.min}</minimum></limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

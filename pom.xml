@@ -32,11 +32,14 @@
         <!-- Puerta 1 - literal, el 80 de .localsettings, por clase, sobre la lista vigilada.
              Al cubrir una clase se anade aqui. Esta lista solo crece. -->
         <jacoco.check.includes>com.nexus.util.*</jacoco.check.includes>
+        <!-- nexus-AUTH-06: CorsProperties queda cubierta al 100 % de linea y rama.
+             SecurityConfig NO entra: 10/28 lineas, por debajo del 80 %. -->
+        <jacoco.check.includes.config>com.nexus.config.CorsProperties</jacoco.check.includes.config>
         <jacoco.class.line.min>0.80</jacoco.class.line.min>
         <jacoco.class.branch.min>0.80</jacoco.class.branch.min>
 
         <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja. -->
-        <jacoco.bundle.line.min>0.0059</jacoco.bundle.line.min>
+        <jacoco.bundle.line.min>0.0173</jacoco.bundle.line.min>
     </properties>
     
     <dependencies>
@@ -261,7 +264,10 @@
                             <rules>
                                 <rule>
                                     <element>CLASS</element>
-                                    <includes><include>${jacoco.check.includes}</include></includes>
+                                    <includes>
+                                        <include>${jacoco.check.includes}</include>
+                                        <include>${jacoco.check.includes.config}</include>
+                                    </includes>
                                     <limits>
                                         <limit><counter>LINE</counter><value>COVEREDRATIO</value>
                                                <minimum>${jacoco.class.line.min}</minimum></limit>

@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/availability")
-@CrossOrigin(origins = "*")
 public class AvailabilityController {
 
     @Autowired

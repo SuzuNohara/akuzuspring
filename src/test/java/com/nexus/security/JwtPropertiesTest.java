@@ -23,6 +23,11 @@ class JwtPropertiesTest {
     /** 48 bytes UTF-8, por encima del minimo de HS256. Literal de prueba, no una credencial. */
     private static final String VALID_SECRET = "test-secret-para-jwtpropertiestest-00000000000A";
 
+    /** Los mismos valores que enlaza el runner, para construir el record a mano. */
+    private static final long EXPIRATION_MILLIS = 86_400_000L;
+
+    private static final String ISSUER = "nexus-api";
+
     private final ApplicationContextRunner runner =
             new ApplicationContextRunner()
                     .withConfiguration(AutoConfigurations.of(ValidationAutoConfiguration.class))
@@ -52,6 +57,21 @@ class JwtPropertiesTest {
                             assertThat(context.getBean(JwtProperties.class).issuer())
                                     .isEqualTo("nexus-api");
                         });
+    }
+
+    @Test
+    @DisplayName("should mask the secret but keep issuer when properties are printed")
+    void shouldMaskTheSecretButKeepIssuerWhenPropertiesArePrinted() {
+        JwtProperties properties = new JwtProperties(VALID_SECRET, EXPIRATION_MILLIS, ISSUER);
+
+        String printed = properties.toString();
+
+        assertThat(printed)
+                .as("el toString autogenerado de un record imprimiria el secreto en claro")
+                .doesNotContain(VALID_SECRET);
+        assertThat(printed)
+                .as("el emisor es publico y sirve para diagnosticar")
+                .contains(ISSUER);
     }
 
     @Configuration(proxyBeanMethods = false)

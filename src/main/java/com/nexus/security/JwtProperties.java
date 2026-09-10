@@ -24,4 +24,29 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "jwt")
 public record JwtProperties(
-        @NotBlank String secret, @Positive long expiration, @NotBlank String issuer) {}
+        @NotBlank String secret, @Positive long expiration, @NotBlank String issuer) {
+
+    /** Lo que sale en lugar del secreto. No revela ni su longitud. */
+    private static final String MASKED_SECRET = "****";
+
+    /**
+     * Sustituye al {@code toString()} que el compilador genera para todo {@code record}, que
+     * imprimiria el secreto en claro. Con {@code logging.level.com.nexus=DEBUG} activo, un solo
+     * {@code log.debug("props: {}", properties)} bastaria para publicar la clave de firma en el
+     * log. Los otros dos campos se conservan porque son configuracion publica y sirven para
+     * diagnosticar.
+     *
+     * @return la representacion con el secreto enmascarado.
+     * @implNote O(1) en tiempo y espacio.
+     */
+    @Override
+    public String toString() {
+        return "JwtProperties[secret="
+                + MASKED_SECRET
+                + ", expiration="
+                + expiration
+                + ", issuer="
+                + issuer
+                + "]";
+    }
+}

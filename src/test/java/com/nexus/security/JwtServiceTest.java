@@ -11,7 +11,7 @@ import io.jsonwebtoken.security.SignatureException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import javax.crypto.SecretKey;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -102,7 +102,19 @@ class JwtServiceTest {
         Instant issuedAt = claims.getIssuedAt().toInstant();
         Instant expiration = claims.getExpiration().toInstant();
         assertThat(Duration.between(issuedAt, expiration)).isEqualTo(Duration.ofSeconds(TTL_SECONDS));
-        assertThat(issued.expiresAt().truncatedTo(ChronoUnit.SECONDS)).isEqualTo(expiration);
+        assertThat(issued.expiresAt()).isEqualTo(expiration);
+    }
+
+    @Test
+    @DisplayName("should declare HS256 in the token header when token is issued")
+    void shouldDeclareHs256InTheTokenHeaderWhenTokenIsIssued() {
+        JwtService service = new JwtService(properties(TEST_SECRET));
+
+        IssuedToken issued = service.issueFor(USER_ID, USER_EMAIL);
+
+        assertThat(decodedHeaderOf(issued.token()))
+                .as("sin el algoritmo explicito, jjwt lo infiere del tamano de la clave")
+                .contains("\"alg\":\"HS256\"");
     }
 
     @Test
@@ -149,6 +161,18 @@ class JwtServiceTest {
 
     private static JwtProperties properties(String secret) {
         return new JwtProperties(secret, TTL_MILLIS, TEST_ISSUER);
+    }
+
+    /**
+     * Decodifica en claro la cabecera del JWS sin pasar por el parser, que aceptaria cualquier
+     * algoritmo HMAC y borraria la diferencia entre HS256 y HS512.
+     *
+     * @implNote O(n) sobre la longitud del primer segmento.
+     */
+    private static String decodedHeaderOf(String token) {
+        String[] segments = token.split("\\.");
+        assertThat(segments).as("un JWS compacto tiene tres segmentos").hasSize(3);
+        return new String(Base64.getUrlDecoder().decode(segments[0]), StandardCharsets.UTF_8);
     }
 
     private static Claims claimsOf(String token, String secret) {

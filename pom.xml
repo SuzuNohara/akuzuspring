@@ -38,8 +38,10 @@
         <jacoco.class.branch.min>0.80</jacoco.class.branch.min>
 
         <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja.
-             0.0059 -> 0.0516 al cubrir com.nexus.security en nexus-AUTH-01. -->
-        <jacoco.bundle.line.min>0.0516</jacoco.bundle.line.min>
+             0.0059 -> 0.0516 (nexus-AUTH-01, com.nexus.security)
+                    -> 0.0578 al fusionar nexus-AUTH-06: los dos conjuntos de tests corren
+                       juntos, asi que la cobertura es la UNION, no el maximo de las dos. -->
+        <jacoco.bundle.line.min>0.0578</jacoco.bundle.line.min>
     </properties>
     
     <dependencies>
@@ -272,6 +274,9 @@
                                         <include>com.nexus.util.*</include>
                                         <!-- nexus-AUTH-01: emisor de JWT y su configuracion. -->
                                         <include>com.nexus.security.*</include>
+                                        <!-- nexus-AUTH-06: solo CorsProperties (100 % linea y rama).
+                                             SecurityConfig NO entra: 10/28 lineas. -->
+                                        <include>com.nexus.config.CorsProperties</include>
                                     </includes>
                                     <limits>
                                         <limit><counter>LINE</counter><value>COVEREDRATIO</value>

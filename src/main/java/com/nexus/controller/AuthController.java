@@ -2,6 +2,8 @@ package com.nexus.controller;
 
 import com.nexus.dto.*;
 import com.nexus.entity.User;
+import com.nexus.security.IssuedToken;
+import com.nexus.security.JwtService;
 import com.nexus.service.UserService;
 import com.nexus.service.PreferenceService;
 import jakarta.validation.Valid;
@@ -20,6 +22,7 @@ public class AuthController {
     
     private final UserService userService;
     private final PreferenceService preferenceService;
+    private final JwtService jwtService;
     
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
@@ -41,7 +44,10 @@ public class AuthController {
             
             // Verificar si completó el cuestionario
             boolean questionnaireCompleted = preferenceService.hasCompletedQuestionnaire(user.getId());
-            
+
+            // nexus-AUTH-01: solo la rama de exito emite token.
+            IssuedToken issued = jwtService.issueFor(user.getId(), user.getEmail());
+
             LoginResponse response = LoginResponse.builder()
                 .success(true)
                 .message("Inicio de sesión exitoso")
@@ -52,6 +58,8 @@ public class AuthController {
                 .linkCode(user.getLinkCode())
                 .emailConfirmed(user.getEmailConfirmed())
                 .questionnaireCompleted(questionnaireCompleted)
+                .token(issued.token())
+                .tokenExpiresAt(issued.expiresAt())
                 .build();
             
             return ResponseEntity.ok(response);

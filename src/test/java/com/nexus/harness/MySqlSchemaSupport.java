@@ -30,7 +30,11 @@ public abstract class MySqlSchemaSupport {
   static final String[] SCHEMA = {"db/Nexus.sql", "db/link_codes.sql"};
 
   /** Ficheros de DB_MIGRATIONS del Makefile, en su orden. */
-  static final String[] MIGRATIONS = {"db/add_fcm_token.sql", "db/add_availability_schedules.sql"};
+  static final String[] MIGRATIONS = {
+      "db/add_fcm_token.sql",
+      "db/add_availability_schedules.sql",
+      "db/add_calendars_external_columns.sql",
+      "db/add_calendar_events_external_columns.sql"};
 
   /** Los tres codigos que db-migrate lee como "este objeto ya existe". */
   static final Set<String> TOLERATED = Set.of("1050", "1060", "1061");

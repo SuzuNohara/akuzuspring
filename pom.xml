@@ -45,8 +45,10 @@
         <!-- Puerta 2 - trinquete global. Valor medido, nunca inventado, nunca a la baja.
              0.0059 -> 0.0516 (nexus-AUTH-01, com.nexus.security)
                     -> 0.0578 al fusionar nexus-AUTH-06: los dos conjuntos de tests corren
-                       juntos, asi que la cobertura es la UNION, no el maximo de las dos. -->
-        <jacoco.bundle.line.min>0.0578</jacoco.bundle.line.min>
+                       juntos, asi que la cobertura es la UNION, no el maximo de las dos.
+                    -> 0.0762 con nexus-SCHEMA-01: AvailabilityControllerTest recorre
+                       saveUserSchedule (guarda de dia repetido) y los *IT de repositorio. -->
+        <jacoco.bundle.line.min>0.0762</jacoco.bundle.line.min>
     </properties>
     
     <dependencies>

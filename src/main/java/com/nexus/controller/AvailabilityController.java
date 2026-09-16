@@ -108,8 +108,15 @@ public class AvailabilityController {
 
             // Convertir DTOs a entidades
             java.util.List<AvailabilitySchedule> entities = new java.util.ArrayList<>();
-            
+
+            java.util.Set<String> seenDays = new java.util.HashSet<>();
             for (AvailabilityScheduleDTO dto : body) {
+                if (!seenDays.add(String.valueOf(dto.getDay()))) {
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Dia repetido en la peticion",
+                        "day", String.valueOf(dto.getDay())
+                    ));
+                }
                 try {
                     System.out.println("  📅 Procesando día: " + dto.getDay() + 
                         " enabled=" + dto.getEnabled() + 

@@ -1,0 +1,21 @@
+{
+  "a": {
+    "user_id": 201,
+    "borough": "Benito Juárez",
+    "preferences": { "bares-y-antros": 5, "conciertos": 4 },
+    "constraints": {
+      "budget_band": "HIGH", "travel_band": "FAR",
+      "window_day": "SATURDAY", "window_start": "22:00", "window_end": "01:00"
+    }
+  },
+  "b": {
+    "user_id": 202,
+    "borough": "Benito Juárez",
+    "preferences": { "bares-y-antros": 4, "conciertos": 5 },
+    "constraints": {
+      "budget_band": "HIGH", "travel_band": "FAR",
+      "window_day": "SATURDAY", "window_start": "21:00", "window_end": "23:30"
+    }
+  },
+  "today": "2026-09-27"
+}

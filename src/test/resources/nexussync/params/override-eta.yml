@@ -1,0 +1,6 @@
+# U1-02: an experiment that overrides two scalars; everything else comes from default.yml.
+experiment: override-eta
+sampler:
+  eta: 0.9
+learning:
+  eta: 0.5

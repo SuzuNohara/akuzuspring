@@ -1,0 +1,5 @@
+place_id,name,osm_type,osm_id,family,place_type,lat,lon,address,neighborhood,borough,opening_hours,website,phone,is_outdoor,weather_ok,ambience,description,source,license,verified_by,verified_at,needs_review
+parque-uno,Parque Uno,way,1,PARQUES,PARK,19.420000,-99.160000,,,Cuauhtémoc,Mo-Su 06:00-20:00,,,1,ANY,NATURE,Parque grande.,osm,ODbL,team,2026-09-23,0
+parque-dos,"Parque Dos, el chico",way,2,PARQUES,PARK,19.430000,-99.170000,,,Cuauhtémoc,,,,1,ANY,,,osm,ODbL,,,1
+parque-tres,Parque Tres,way,3,PARQUES,PARK,19.440000,-99.180000,,,Miguel Hidalgo,,,,1,ANY,,,osm,ODbL,,,1
+museo-uno,Museo Uno,node,4,CULTURA,MUSEUM,19.450000,-99.190000,,,Cuauhtémoc,Tu-Su 10:00-18:00,,,0,ANY,CULTURAL,Museo.,osm,ODbL,,,1

@@ -1,0 +1,4 @@
+# U1-10: rank_points must have exactly three entries.
+experiment: bad-rank
+decision:
+  rank_points: [3, 2]

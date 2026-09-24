@@ -1,0 +1,8 @@
+# Umbrales de la Fase C2 (D-CAL-2), fixture de prueba.
+gold_violation_rate_max: 0.0
+fairness_gap_max: 0.15
+gold_hit_rate_min: 0.70
+hallucination_rate_max: 0.02
+stability_at_seed_min: 0.40
+closure_f1_rate_min: 0.50
+chosen_in_top3_truth_rate_min: 0.60

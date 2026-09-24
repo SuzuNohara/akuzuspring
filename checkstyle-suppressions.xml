@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<!-- nexus-NEXUSSYNC-01: UNICO fichero de supresiones. Solo reglas Javadoc y solo en src/test. -->
+<suppressions>
+    <suppress checks="JavadocPackage" files="src[/\\]test[/\\].*"/>
+    <suppress checks="MissingJavadocMethod" files="src[/\\]test[/\\].*"/>
+    <suppress checks="MissingJavadocType" files="src[/\\]test[/\\].*"/>
+</suppressions>

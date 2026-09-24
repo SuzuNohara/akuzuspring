@@ -1,0 +1,41 @@
+{
+  "source": "tools/kb/geo.py::haversine_m (2026-09-24)",
+  "pairs": [
+    {
+      "from": "zocalo",
+      "lat1": 19.432608,
+      "lon1": -99.133209,
+      "to": "coyoacan",
+      "lat2": 19.349914,
+      "lon2": -99.16217,
+      "km": 9.683922
+    },
+    {
+      "from": "chapultepec",
+      "lat1": 19.420432,
+      "lon1": -99.181877,
+      "to": "xochimilco",
+      "lat2": 19.25719,
+      "lon2": -99.10389,
+      "km": 19.910736
+    },
+    {
+      "from": "same",
+      "lat1": 19.4,
+      "lon1": -99.1,
+      "to": "same2",
+      "lat2": 19.4,
+      "lon2": -99.1,
+      "km": 0.0
+    }
+  ],
+  "midpoint": {
+    "lat1": 19.432608,
+    "lon1": -99.133209,
+    "lat2": 19.349914,
+    "lon2": -99.16217,
+    "lat": 19.391261,
+    "lon": -99.147689,
+    "note": "media aritmetica de lat/lon (distancias < 20 km); tolerancia 1 m"
+  }
+}

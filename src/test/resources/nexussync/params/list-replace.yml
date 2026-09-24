@@ -1,0 +1,6 @@
+# U1-03: lists are replaced whole, never concatenated with the defaults.
+experiment: list-replace
+sampler:
+  relax_order: [BUDGET]
+decision:
+  rank_points: [5, 3, 1]

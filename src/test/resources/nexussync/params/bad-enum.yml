@@ -1,0 +1,4 @@
+# U1-05: an enum name that does not exist.
+experiment: bad-enum
+sampler:
+  learning_method: BOGUS

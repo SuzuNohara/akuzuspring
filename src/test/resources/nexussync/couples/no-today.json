@@ -1,0 +1,20 @@
+{
+  "a": {
+    "user_id": 301,
+    "borough": "Tlalpan",
+    "preferences": { "senderismo": 5 },
+    "constraints": {
+      "budget_band": "LOW", "travel_band": "FAR",
+      "window_day": "SUNDAY", "window_start": "08:00", "window_end": "13:00"
+    }
+  },
+  "b": {
+    "user_id": 302,
+    "borough": "Tlalpan",
+    "preferences": { "senderismo": 4 },
+    "constraints": {
+      "budget_band": "LOW", "travel_band": "FAR",
+      "window_day": "SUNDAY", "window_start": "09:00", "window_end": "14:00"
+    }
+  }
+}

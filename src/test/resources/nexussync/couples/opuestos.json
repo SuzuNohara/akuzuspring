@@ -1,0 +1,52 @@
+{
+  "a": {
+    "user_id": 101,
+    "borough": "Coyoacán",
+    "location": { "lat": 19.3467, "lon": -99.1617 },
+    "preferences": {
+      "gimnasio": 5, "futbol": 5, "correr": 4, "bares-y-antros": 5, "videojuegos": 4,
+      "leer": 1, "visitar-museos": 1, "meditacion": 1, "teatro": 2
+    },
+    "emotional_recent": [
+      { "date": "2026-09-24", "code": "HAPPY", "intensity": 4 },
+      { "date": "2026-09-26", "code": "STRESSED", "intensity": 2 }
+    ],
+    "history": [
+      { "activity_id": "bar-karaoke", "date": "2026-09-12", "offered": true, "chosen": true, "rating": 3 },
+      { "activity_id": "museo-arte-moderno", "date": "2026-09-12", "offered": true, "chosen": false }
+    ],
+    "constraints": {
+      "budget_band": "MID", "travel_band": "MID",
+      "window_day": "SATURDAY", "window_start": "16:00", "window_end": "22:00"
+    },
+    "truth_weights": {
+      "INTEREST": 0.35, "PRICE": 0.1, "DISTANCE": 0.1, "NOVELTY": 0.15,
+      "EMOTION": 0.1, "COLLAB": 0.1, "SEASON": 0.1
+    }
+  },
+  "b": {
+    "user_id": 102,
+    "borough": "Cuauhtémoc",
+    "location": { "lat": 19.4326, "lon": -99.1332 },
+    "preferences": {
+      "gimnasio": 1, "futbol": 1, "correr": 1, "bares-y-antros": 1, "videojuegos": 2,
+      "leer": 5, "visitar-museos": 5, "meditacion": 4, "teatro": 5
+    },
+    "emotional_recent": [
+      { "date": "2026-09-25", "code": "CALM", "intensity": 3 }
+    ],
+    "history": [
+      { "activity_id": "bar-karaoke", "date": "2026-09-12", "offered": true, "chosen": true, "rating": 2 },
+      { "activity_id": "museo-arte-moderno", "date": "2026-09-12", "offered": true, "chosen": false }
+    ],
+    "constraints": {
+      "budget_band": "MID", "travel_band": "NEAR",
+      "window_day": "SATURDAY", "window_start": "18:00", "window_end": "23:00"
+    },
+    "truth_weights": {
+      "INTEREST": 0.3, "PRICE": 0.1, "DISTANCE": 0.2, "NOVELTY": 0.1,
+      "EMOTION": 0.15, "COLLAB": 0.05, "SEASON": 0.1
+    }
+  },
+  "today": "2026-09-27"
+}

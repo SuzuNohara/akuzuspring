@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- nexus-NEXUSSYNC-01 (desviación D-08): los records del paquete exponen List/Set/Map por diseño y copian
+     defensivamente en el constructor compacto (List.copyOf / Set.copyOf / Map.copyOf), así que EI_EXPOSE_REP y
+     EI_EXPOSE_REP2 son falsos positivos aquí. Ninguna otra categoría se excluye. -->
+<FindBugsFilter>
+    <Match>
+        <Package name="~com\.nexus\.nexussync.*"/>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP"/>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+        </Or>
+    </Match>
+    <!-- D-31: el paquete usa java.util.Random con semilla A PROPÓSITO (simulación reproducible del banco y
+         desempates; plan §3.0 "no criptografía: desviación consciente de .langs/java.md §5"). Ningún valor
+         aleatorio del paquete protege un secreto. -->
+    <Match>
+        <Package name="~com\.nexus\.nexussync.*"/>
+        <Bug pattern="PREDICTABLE_RANDOM"/>
+    </Match>
+    <!-- D-16: DefaultLauncher ES la frontera de procesos del diseño (A6): recibe el comando ya construido por
+         ArkannieRunner desde RuntimeParams.arkannieBin (ruta fijada en params, no entrada de usuario). findsecbugs
+         no puede saberlo y reporta COMMAND_INJECTION. Solo esta clase; ningún otro sitio del paquete lanza procesos. -->
+    <Match>
+        <Class name="com.nexus.nexussync.ann.DefaultLauncher"/>
+        <Bug pattern="COMMAND_INJECTION"/>
+    </Match>
+</FindBugsFilter>

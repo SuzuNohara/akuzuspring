@@ -1,0 +1,3 @@
+place_id,name,osm_type,osm_id,family,place_type,lat,lon,address,neighborhood,borough,opening_hours,website,phone,is_outdoor,weather_ok,ambience,description,source,license,verified_by,verified_at,needs_review
+parque-uno,Parque Uno,way,1,PARQUES,PARK,19.420000,-99.160000,,,Cuauhtémoc,,,,1,ANY,,,osm,ODbL,,,1
+parque-roto,Parque Roto,way,2,PARQUES,PARK,diecinueve,-99.170000,,,Cuauhtémoc,,,,1,ANY,,,osm,ODbL,,,1

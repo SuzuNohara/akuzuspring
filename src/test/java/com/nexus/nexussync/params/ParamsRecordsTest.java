@@ -198,7 +198,8 @@ final class ParamsRecordsTest {
         .containsExactly(MediatorClimate.NONE, MediatorClimate.AGGREGATED);
     assertThat(PlaceRelax.values())
         .containsExactly(PlaceRelax.RADIUS, PlaceRelax.HOURS_UNKNOWN, PlaceRelax.WEATHER);
-    assertThat(ExecutorKind.values()).containsExactly(ExecutorKind.ARKANNIE, ExecutorKind.REPLAY);
+    assertThat(ExecutorKind.values())
+        .containsExactly(ExecutorKind.ARKANNIE, ExecutorKind.REPLAY, ExecutorKind.ORACLE);
   }
 
   private static SamplerParams withRelax(List<FilterName> order, Map<Feature, Double> w) {

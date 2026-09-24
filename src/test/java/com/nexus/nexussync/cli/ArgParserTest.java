@@ -2,6 +2,7 @@ package com.nexus.nexussync.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.nexus.nexussync.params.ExecutorKind;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -100,11 +101,66 @@ class ArgParserTest {
             new String[] {"run", "--params", "p.yml", "--seed", "1.5"},
             new String[] {"run", "--couples", "a"},
             new String[] {"replay", "--params", "p.yml"},
-            new String[] {"compare", "--dir", "/nx"});
+            new String[] {"compare", "--dir", "/nx"},
+            new String[] {"sweep", "--dir", "/nx"},
+            new String[] {"sweep", "--matrix", "m.yml"},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--executor", "REPLAY"},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--executor", "CLAUDE"},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--seeds", "1,x"},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--seeds", ","},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--couples", ","},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--rounds", "0"},
+            new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml", "--params", "p.yml"});
 
     for (String[] args : bad) {
       assertThat(ArgParser.parse(args)).as(String.join(" ", args)).isEmpty();
     }
+  }
+
+  @Test
+  void given_sweep_without_options_when_parse_then_defaults() {
+    Optional<Object> out =
+        ArgParser.parse(new String[] {"sweep", "--dir", "/nx", "--matrix", "m.yml"});
+
+    assertThat(out)
+        .contains(
+            new SweepArgs(
+                Path.of("/nx"),
+                Path.of("m.yml"),
+                List.of("all"),
+                List.of(1L, 2L, 3L),
+                ExecutorKind.ORACLE,
+                1));
+  }
+
+  @Test
+  void given_sweep_with_every_option_when_parse_then_sweep_args() {
+    Optional<Object> out =
+        ArgParser.parse(
+            new String[] {
+              "sweep",
+              "--dir=/nx",
+              "--matrix",
+              "m.yml",
+              "--couples",
+              "a,b",
+              "--seeds",
+              " 7, 8 ",
+              "--executor",
+              "arkannie",
+              "--rounds",
+              "5"
+            });
+
+    assertThat(out)
+        .contains(
+            new SweepArgs(
+                Path.of("/nx"),
+                Path.of("m.yml"),
+                List.of("a", "b"),
+                List.of(7L, 8L),
+                ExecutorKind.ARKANNIE,
+                5));
   }
 
   @Test

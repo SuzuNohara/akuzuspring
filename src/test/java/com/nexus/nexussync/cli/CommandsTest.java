@@ -10,7 +10,10 @@ import com.nexus.nexussync.ann.CallBudget;
 import com.nexus.nexussync.ann.FakeLauncher;
 import com.nexus.nexussync.ann.LaunchResult;
 import com.nexus.nexussync.ann.RunLock;
+import com.nexus.nexussync.bench.OracleExecutor;
 import com.nexus.nexussync.bench.ReplayExecutor;
+import com.nexus.nexussync.catalog.Catalog;
+import com.nexus.nexussync.catalog.CatalogLoader;
 import com.nexus.nexussync.params.ExecutorKind;
 import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.params.RuntimeParams;
@@ -52,7 +55,9 @@ class CommandsTest {
     Path home = home();
     FakeLauncher launcher = launcher("arkannie 0.3.0 (Ann v0.3)", 0);
 
-    int rc = commands(launcher, p -> new FakeGateExecutor()).validate(validateArgs(home, BASELINE));
+    int rc =
+        commands(launcher, (p, cat) -> new FakeGateExecutor())
+            .validate(validateArgs(home, BASELINE));
 
     assertThat(rc).isEqualTo(Commands.OK);
     assertThat(home.resolve(".agents/persona/agent.yaml")).isRegularFile();
@@ -70,7 +75,7 @@ class CommandsTest {
     write(home.resolve("params/bad.yml"), "experiment: bad\nsampler:\n  eta: 99.0\n");
 
     int rc =
-        commands(launcher("arkannie 0.3.0", 0), p -> new FakeGateExecutor())
+        commands(launcher("arkannie 0.3.0", 0), (p, cat) -> new FakeGateExecutor())
             .validate(validateArgs(home, "bad"));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -82,7 +87,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("arkannie 0.2.9 (Ann v0.2)", 0), p -> new FakeGateExecutor())
+        commands(launcher("arkannie 0.2.9 (Ann v0.2)", 0), (p, cat) -> new FakeGateExecutor())
             .validate(validateArgs(home, BASELINE));
 
     assertThat(rc).isEqualTo(Commands.OK);
@@ -93,7 +98,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("arkannie 0.3.0", 1), p -> new FakeGateExecutor())
+        commands(launcher("arkannie 0.3.0", 1), (p, cat) -> new FakeGateExecutor())
             .validate(validateArgs(home, BASELINE));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -105,7 +110,7 @@ class CommandsTest {
     delete(home.resolve(".agents/mediador"));
 
     int rc =
-        commands(launcher("arkannie 0.3.0", 0), p -> new FakeGateExecutor())
+        commands(launcher("arkannie 0.3.0", 0), (p, cat) -> new FakeGateExecutor())
             .validate(validateArgs(home, BASELINE));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -117,7 +122,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor().echoSample())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor().echoSample())
             .run(runArgs(home, List.of(COUPLE), OptionalLong.empty()));
 
     assertThat(rc).isEqualTo(Commands.OK);
@@ -133,7 +138,7 @@ class CommandsTest {
   @Test
   void given_recorded_run_when_replay_then_zero_same_final_list_and_no_launch() throws Exception {
     Path home = home();
-    commands(launcher("", 0), p -> new FakeGateExecutor().echoSample())
+    commands(launcher("", 0), (p, cat) -> new FakeGateExecutor().echoSample())
         .run(runArgs(home, List.of(COUPLE), OptionalLong.empty()));
     Path recorded = runDir(home.resolve("runs").resolve(BASELINE));
     FakeLauncher launcher = launcher("", 0);
@@ -155,7 +160,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .run(runArgs(home, List.of(), OptionalLong.empty()));
 
     assertThat(rc).isEqualTo(Commands.USAGE);
@@ -168,7 +173,7 @@ class CommandsTest {
     FakeGateExecutor fake = new FakeGateExecutor();
 
     int rc =
-        commands(launcher("", 0), p -> fake)
+        commands(launcher("", 0), (p, cat) -> fake)
             .run(runArgs(home, List.of(COUPLE, "no-existe"), OptionalLong.empty()));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -180,7 +185,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .run(runArgs(home, List.of("../couples/opuestos"), OptionalLong.empty()));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -193,7 +198,7 @@ class CommandsTest {
     Files.createFile(home.resolve(RunLock.LOCK_FILE));
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor().echoSample())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor().echoSample())
             .run(runArgs(home, List.of(COUPLE), OptionalLong.empty()));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -245,7 +250,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor().echoSample())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor().echoSample())
             .run(runArgs(home, List.of(COUPLE), OptionalLong.of(7L)));
 
     assertThat(rc).isEqualTo(Commands.OK);
@@ -288,7 +293,7 @@ class CommandsTest {
     Path home = home();
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .replay(new ReplayArgs(params(home, BASELINE), Optional.of(home), tmp.resolve("nope")));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -300,7 +305,7 @@ class CommandsTest {
     Path from = Files.createDirectories(tmp.resolve("runs/x/999-1000/run"));
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .replay(new ReplayArgs(params(home, BASELINE), Optional.of(home), from));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -309,11 +314,11 @@ class CommandsTest {
   @Test
   void given_experiments_when_compare_then_dated_report() throws Exception {
     Path home = home();
-    commands(launcher("", 0), p -> new FakeGateExecutor().echoSample())
+    commands(launcher("", 0), (p, cat) -> new FakeGateExecutor().echoSample())
         .run(runArgs(home, List.of(COUPLE), OptionalLong.empty()));
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .compare(new CompareArgs(home, List.of(BASELINE, "missing")));
 
     assertThat(rc).isEqualTo(Commands.OK);
@@ -325,7 +330,7 @@ class CommandsTest {
   @Test
   void given_no_experiments_when_compare_then_usage() {
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .compare(new CompareArgs(tmp, List.of()));
 
     assertThat(rc).isEqualTo(Commands.USAGE);
@@ -334,7 +339,7 @@ class CommandsTest {
   @Test
   void given_bad_experiment_name_when_compare_then_one() {
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .compare(new CompareArgs(tmp, List.of("../etc")));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -345,7 +350,7 @@ class CommandsTest {
     Files.writeString(tmp.resolve(Commands.REPORTS), "x", StandardCharsets.UTF_8);
 
     int rc =
-        commands(launcher("", 0), p -> new FakeGateExecutor())
+        commands(launcher("", 0), (p, cat) -> new FakeGateExecutor())
             .compare(new CompareArgs(tmp, List.of("exp")));
 
     assertThat(rc).isEqualTo(Commands.ERROR);
@@ -354,7 +359,7 @@ class CommandsTest {
   // U11-08
   @Test
   void given_usage_error_when_execute_then_two() {
-    Commands commands = commands(launcher("", 0), p -> new FakeGateExecutor());
+    Commands commands = commands(launcher("", 0), (p, cat) -> new FakeGateExecutor());
 
     assertThat(commands.execute(ArgParser.parse(new String[] {"bogus"}))).isEqualTo(Commands.USAGE);
     assertThat(commands.execute(Optional.of("not arguments"))).isEqualTo(Commands.USAGE);
@@ -363,7 +368,7 @@ class CommandsTest {
   @Test
   void given_parsed_arguments_when_execute_then_dispatched() throws Exception {
     Path home = home();
-    Commands commands = commands(launcher("arkannie 0.3.0", 0), p -> new FakeGateExecutor());
+    Commands commands = commands(launcher("arkannie 0.3.0", 0), (p, cat) -> new FakeGateExecutor());
     String params = params(home, BASELINE).toString();
     String dir = home.toString();
 
@@ -386,13 +391,89 @@ class CommandsTest {
   void given_default_factory_when_create_then_executor_per_kind() throws Exception {
     Path home = home();
     Params p = Commands.load(params(home, BASELINE), Optional.of(home));
+    Catalog cat = catalog(home, p);
     GateExecutorFactory factory = GateExecutorFactory.defaults(launcher("", 0));
 
-    assertThat(factory.create(p)).isInstanceOf(ArkannieExecutor.class);
-    assertThat(factory.create(withRuntime(p, ExecutorKind.REPLAY, Optional.of(home))))
+    assertThat(factory.create(p, cat)).isInstanceOf(ArkannieExecutor.class);
+    assertThat(factory.create(withRuntime(p, ExecutorKind.REPLAY, Optional.of(home)), cat))
         .isInstanceOf(ReplayExecutor.class);
-    assertThatThrownBy(() -> factory.create(withRuntime(p, ExecutorKind.REPLAY, Optional.empty())))
+    assertThat(factory.create(withRuntime(p, ExecutorKind.ORACLE, Optional.empty()), cat))
+        .isInstanceOf(OracleExecutor.class);
+    assertThatThrownBy(
+            () -> factory.create(withRuntime(p, ExecutorKind.REPLAY, Optional.empty()), cat))
         .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void given_oracle_executor_in_yaml_when_load_then_accepted_and_oracle_built() throws Exception {
+    Path home = home();
+    write(home.resolve("params/oracle.yml"), "experiment: oracle\nruntime:\n  executor: ORACLE\n");
+
+    Params p = Commands.load(params(home, "oracle"), Optional.of(home));
+
+    assertThat(p.runtime().executor()).isEqualTo(ExecutorKind.ORACLE);
+    assertThat(GateExecutorFactory.defaults(launcher("", 0)).create(p, catalog(home, p)))
+        .isInstanceOf(OracleExecutor.class);
+  }
+
+  // U13-05
+  @Test
+  void given_matrix_when_sweep_with_oracle_then_report_files_and_no_launch() throws Exception {
+    Path home = sweepHome();
+    FakeLauncher launcher = launcher("", 0);
+
+    int rc =
+        commands(launcher, GateExecutorFactory.defaults(launcher))
+            .sweep(sweepArgs(home, List.of(COUPLE)));
+
+    assertThat(rc).isEqualTo(Commands.OK);
+    assertThat(launcher.launches()).isZero();
+    assertThat(home.resolve("params/cal-t-sampler-eps0-0.15.yml")).isRegularFile();
+    assertThat(home.resolve("params/cal-t-sampler-eps0-0.5.yml")).isRegularFile();
+    Path report = home.resolve("calibration/report-2026-09-24-t.md");
+    assertThat(Files.readString(report, StandardCharsets.UTF_8))
+        .contains(
+            "cal-t-sampler-eps0-0.15", "cal-t-sampler-eps0-0.5", "## Ganador", "## Descartes");
+    try (Stream<Path> records = Files.walk(home.resolve("runs/sweep"))) {
+      assertThat(records.filter(f -> f.endsWith("record.json")).count()).isEqualTo(4);
+    }
+    assertThat(home.resolve(RunLock.LOCK_FILE)).doesNotExist();
+  }
+
+  @Test
+  void given_parsed_sweep_when_execute_then_dispatched() throws Exception {
+    Path home = sweepHome();
+    String[] args = {
+      "sweep",
+      "--dir",
+      home.toString(),
+      "--matrix",
+      home.resolve("calibration/matrix-t.yml").toString(),
+      "--couples",
+      COUPLE,
+      "--seeds",
+      "1",
+      "--executor",
+      "oracle"
+    };
+    FakeLauncher launcher = launcher("", 0);
+
+    int rc =
+        commands(launcher, GateExecutorFactory.defaults(launcher)).execute(ArgParser.parse(args));
+
+    assertThat(rc).isEqualTo(Commands.OK);
+  }
+
+  @Test
+  void given_missing_thresholds_or_unknown_couple_when_sweep_then_one() throws Exception {
+    Path home = sweepHome();
+    FakeGateExecutor fake = new FakeGateExecutor();
+    Commands commands = commands(launcher("", 0), (p, cat) -> fake);
+
+    assertThat(commands.sweep(sweepArgs(home, List.of("no-existe")))).isEqualTo(Commands.ERROR);
+    Files.delete(home.resolve("calibration/thresholds.yml"));
+    assertThat(commands.sweep(sweepArgs(home, List.of(COUPLE)))).isEqualTo(Commands.ERROR);
+    assertThat(fake.round1Calls()).isZero();
   }
 
   @Test
@@ -413,11 +494,41 @@ class CommandsTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  /** {@link #home()} plus thresholds and a two-value matrix {@code calibration/matrix-t.yml}. */
+  private Path sweepHome() throws IOException {
+    Path home = home();
+    Path cal = Files.createDirectories(home.resolve("calibration"));
+    write(
+        cal.resolve("thresholds.yml"),
+        "gold_violation_rate_max: 0.0\nfairness_gap_max: 0.15\ngold_hit_rate_min: 0.70\n"
+            + "hallucination_rate_max: 0.02\nstability_at_seed_min: 0.40\n"
+            + "closure_f1_rate_min: 0.50\nchosen_in_top3_truth_rate_min: 0.60\n");
+    write(
+        cal.resolve("matrix-t.yml"),
+        "stage: t\nbase: default.yml\nmode: one_at_a_time\nparams:\n"
+            + "  sampler.eps0: [0.15, 0.50]\n");
+    return home;
+  }
+
+  private static SweepArgs sweepArgs(Path home, List<String> couples) {
+    return new SweepArgs(
+        home,
+        home.resolve("calibration/matrix-t.yml"),
+        couples,
+        List.of(1L, 2L),
+        ExecutorKind.ORACLE,
+        1);
+  }
+
+  private static Catalog catalog(Path home, Params p) throws Exception {
+    return CatalogLoader.load(home.resolve(p.catalogDir()), home.resolve(p.placesCsv()));
+  }
+
   /** Commands whose every budget is recorded in {@code budgets}. */
   private static Commands recording(FakeGateExecutor fake, List<CallBudget> budgets) {
     return new Commands(
         launcher("", 0),
-        p -> fake,
+        (p, cat) -> fake,
         CLOCK,
         max -> {
           CallBudget b = new CallBudget(max);

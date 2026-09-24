@@ -10,6 +10,7 @@ import com.nexus.nexussync.ann.ProgramRenderer;
 import com.nexus.nexussync.bench.Comparer;
 import com.nexus.nexussync.bench.CoupleRunner;
 import com.nexus.nexussync.bench.RunRecord;
+import com.nexus.nexussync.bench.Sweep;
 import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.catalog.CatalogLoader;
 import com.nexus.nexussync.context.ProfileLoader;
@@ -55,7 +56,8 @@ import org.slf4j.LoggerFactory;
  * a security primitive), and writes under {@code <dir>/runs/}. {@code replay} repeats one recorded
  * run with the {@code REPLAY} executor; its couple file is the one of {@code fixtures/couples/}
  * whose couple id is the name of the parent of {@code --from}, and its output goes to {@code
- * <dir>/runs/replay/}.
+ * <dir>/runs/replay/}. {@code sweep} expands a calibration matrix and ranks its experiments (Fase
+ * C3).
  */
 public final class Commands {
 
@@ -79,6 +81,9 @@ public final class Commands {
 
   /** Directory of the reports under the nexussync root. */
   static final String REPORTS = "reports";
+
+  /** Output root of the sweeps under {@link #RUNS}. */
+  static final String SWEEPS = "sweep";
 
   /** Round templates checked by {@code validate}, under {@code <dir>/ann/}. */
   static final List<String> TEMPLATES = List.of("round1.ann.tmpl", "round2.ann.tmpl");
@@ -147,6 +152,9 @@ public final class Commands {
     }
     if (a instanceof CompareArgs c) {
       return compare(c);
+    }
+    if (a instanceof SweepArgs w) {
+      return sweep(w);
     }
     LOG.error("{}", ArgParser.USAGE);
     return USAGE;
@@ -223,16 +231,7 @@ public final class Commands {
         throw new NexussyncException("not a run directory: " + from);
       }
       Path couple = coupleOf(dir, from);
-      RuntimeParams rt = loaded.runtime();
-      RuntimeParams replay =
-          new RuntimeParams(
-              ExecutorKind.REPLAY,
-              rt.nexussyncDir(),
-              rt.arkannieBin(),
-              Optional.of(from),
-              rt.maxCalls(),
-              rt.arkannieVersion());
-      Params p = copy(loaded, loaded.seed(), replay);
+      Params p = withExecutor(loaded, ExecutorKind.REPLAY, Optional.of(from));
       runCouples(p, List.of(couple), 1, dir.resolve(RUNS).resolve(REPLAYS));
       return OK;
     } catch (NexussyncException | UncheckedIOException | IllegalStateException e) {
@@ -277,22 +276,59 @@ public final class Commands {
     }
   }
 
-  private void runCouples(Params p, List<Path> couples, int rounds, Path outDir)
+  /**
+   * Sweeps a calibration matrix with {@link Sweep#run}: every generated experiment runs over the
+   * couples once per seed with the requested executor (one budget per experiment and seed, A2)
+   * under {@code <dir>/runs/sweep/<stage>-<epochMillis>/}; the report goes to {@code
+   * <dir>/calibration/}. {@code ORACLE} never calls an agent.
+   *
+   * @param a arguments
+   * @return {@value #OK} once the report is written (also when every experiment is discarded);
+   *     {@value #ERROR} if the matrix, thresholds, gold set or a couple is invalid, or a run fails
+   * @implNote O(e · s · c · rounds · cost of one iteration) time, e experiments, s seeds, c
+   *     couples; O(e · s · c · rounds) records in memory.
+   */
+  public int sweep(SweepArgs a) {
+    try {
+      Path dir = a.dir().toAbsolutePath().normalize();
+      List<Path> couples = couples(dir, a.couples());
+      String stage = Sweep.stage(a.matrix());
+      Path outDir = dir.resolve(RUNS).resolve(SWEEPS).resolve(stage + "-" + clock.millis());
+      Sweep.Runner runner =
+          (file, seed) -> {
+            Params loaded = load(file, Optional.of(dir), OptionalLong.of(seed));
+            Optional<Path> replay = loaded.runtime().replayDir();
+            return runCouples(
+                withExecutor(loaded, a.executor(), replay), couples, a.rounds(), outDir);
+          };
+      Path report = Sweep.run(a.matrix(), dir, a.seeds(), LocalDate.now(clock), runner);
+      LOG.info("sweep report {} (runs in {})", report, outDir);
+      return OK;
+    } catch (NexussyncException | UncheckedIOException | IllegalStateException e) {
+      LOG.error("sweep failed: {}", e.getMessage());
+      return ERROR;
+    }
+  }
+
+  private List<RunRecord> runCouples(Params p, List<Path> couples, int rounds, Path outDir)
       throws NexussyncException {
     Path dir = p.runtime().nexussyncDir();
     Catalog cat = CatalogLoader.load(dir.resolve(p.catalogDir()), dir.resolve(p.placesCsv()));
     CallBudget budget = budgets.apply(p.runtime().maxCalls());
     CoupleRunner runner = new CoupleRunner(clock);
+    List<RunRecord> out = new ArrayList<>();
     for (Path couple : couples) {
       List<RunRecord> records =
           runner.run(
-              couple, p, cat, factory.create(p), outDir, rounds, rngs.apply(p.seed()), budget);
+              couple, p, cat, factory.create(p, cat), outDir, rounds, rngs.apply(p.seed()), budget);
       for (RunRecord r : records) {
         Path runDir = outDir.resolve(r.experiment()).resolve(r.coupleId()).resolve(r.runId());
         LOG.info("run {} closure {}", runDir, r.gate().closure());
       }
+      out.addAll(records);
     }
     LOG.info("agent calls used: {} of {}", budget.used(), p.runtime().maxCalls());
+    return out;
   }
 
   /** Renders both round templates into a temporary directory and checks them with arkannie. */
@@ -408,6 +444,21 @@ public final class Commands {
             rt.maxCalls(),
             rt.arkannieVersion());
     return copy(p, seed.orElse(p.seed()), resolved);
+  }
+
+  /** {@code p} with another executor kind and replay directory. */
+  private static Params withExecutor(Params p, ExecutorKind kind, Optional<Path> replayDir) {
+    RuntimeParams rt = p.runtime();
+    return copy(
+        p,
+        p.seed(),
+        new RuntimeParams(
+            kind,
+            rt.nexussyncDir(),
+            rt.arkannieBin(),
+            replayDir,
+            rt.maxCalls(),
+            rt.arkannieVersion()));
   }
 
   private static Params copy(Params p, long seed, RuntimeParams rt) {

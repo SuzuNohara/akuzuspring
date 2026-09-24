@@ -63,8 +63,10 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The hidden truth never reaches the agents (D-30): while the gate runs, {@code runDir} only
  * holds {@value #PARAMS} and the traces the gate writes; {@value #CONTEXT}, which carries the
- * {@code truthWeights} and the locations, is written after the gate has finished. The agent calls
- * consumed by each gate are recorded in {@link RunRecord.Evidence#calls()}.
+ * locations, is written after the gate has finished. No file under {@code outDir} ever holds the
+ * {@code truthWeights} (D-33): {@value #CONTEXT} and {@value #RECORD} carry their truncated SHA-256
+ * instead ({@link TruthRedaction}); the returned records keep them in memory for the metrics. The
+ * agent calls consumed by each gate are recorded in {@link RunRecord.Evidence#calls()}.
  *
  * <p>Each iteration writes {@code outDir/<experiment>/<coupleId>/<runId>/} with {@value #PARAMS},
  * {@value #CONTEXT}, {@code sample.json} (written by the gate), {@code round*.ann} and {@code
@@ -79,7 +81,7 @@ public final class CoupleRunner {
   /** Canonical YAML of the parameters. */
   static final String PARAMS = "params.yml";
 
-  /** Context of the couple, profiles included (bench trace, never shown to the agents). */
+  /** Context of the couple, truth redacted (bench trace, never shown to the agents). */
   static final String CONTEXT = "context.json";
 
   /** Outcome of the gate. */
@@ -336,12 +338,12 @@ public final class CoupleRunner {
   /** Writes the outcome of a finished iteration; the context goes here, after the gate (D-30). */
   private static void writeOutcome(Path runDir, Context ctx, RunRecord r)
       throws NexussyncException {
-    BenchIo.write(BenchIo.JSON, runDir.resolve(CONTEXT), ctx);
+    BenchIo.write(BenchIo.JSON, runDir.resolve(CONTEXT), TruthRedaction.context(ctx));
     BenchIo.write(BenchIo.JSON, runDir.resolve(GATE), r.gate());
     BenchIo.write(BenchIo.JSON, runDir.resolve(DECISION), r.decision());
     BenchIo.write(BenchIo.JSON, runDir.resolve(PLACES), r.places());
     BenchIo.write(BenchIo.WEIGHTS_YAML, runDir.resolve(WEIGHTS), r.after().orElse(r.before()));
-    BenchIo.write(BenchIo.JSON, runDir.resolve(RECORD), r);
+    BenchIo.write(BenchIo.JSON, runDir.resolve(RECORD), TruthRedaction.record(r));
   }
 
   /**

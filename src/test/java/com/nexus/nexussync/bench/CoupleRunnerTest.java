@@ -14,6 +14,7 @@ import com.nexus.nexussync.ann.RunLock;
 import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.context.Context;
 import com.nexus.nexussync.decision.Decision;
+import com.nexus.nexussync.params.Feature;
 import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.rounds.Agent;
 import com.nexus.nexussync.rounds.Closure;
@@ -179,8 +180,39 @@ class CoupleRunnerTest {
             .get(0);
 
     assertThat(seen).isNotEmpty().allMatch("clean"::equals);
-    assertThat(Files.readString(runDir(out, r).resolve("context.json"))).contains("truth");
+    assertThat(Files.readString(runDir(out, r).resolve("context.json")))
+        .contains(TruthRedaction.CONTEXT_KEY);
     assertThat(r.evidence().calls()).isEqualTo(3);
+  }
+
+  // D-33: no file of the runs tree holds the truth weights; context and record carry their hash
+  @Test
+  void given_finishedRuns_when_walkRunsTree_then_noTruthWeightsAnywhere() throws Exception {
+    final List<RunRecord> rs = run(BenchFixtures.couple(nx, "opuestos"), out, 2, echo());
+
+    List<Path> files;
+    try (Stream<Path> walk = Files.walk(out)) {
+      files = walk.filter(Files::isRegularFile).toList();
+    }
+
+    assertThat(files).hasSizeGreaterThanOrEqualTo(2 * TEN_FILES.size());
+    for (Path f : files) {
+      assertThat(Files.readString(f))
+          .as(f.toString())
+          .doesNotContain("truth_weights")
+          .doesNotContain("truthWeights");
+    }
+    final Map<Feature, Double> truthA = rs.get(0).evidence().truthWeights().get(Agent.A);
+    JsonNode ctx =
+        new ObjectMapper().readTree(runDir(out, rs.get(0)).resolve("context.json").toFile());
+    assertThat(ctx.path("a").path(TruthRedaction.CONTEXT_KEY).asText())
+        .isEqualTo(TruthRedaction.hash(truthA))
+        .hasSize(TruthRedaction.HASH_CHARS);
+    JsonNode record =
+        new ObjectMapper().readTree(runDir(out, rs.get(0)).resolve("record.json").toFile());
+    assertThat(record.path("evidence").path(TruthRedaction.RECORD_KEY).path("A").asText())
+        .isEqualTo(TruthRedaction.hash(truthA));
+    assertThat(rs.get(0).evidence().truthWeights()).hasSize(2);
   }
 
   /** Executor that inspects {@code runDir} every time an agent round is dispatched (D-30). */

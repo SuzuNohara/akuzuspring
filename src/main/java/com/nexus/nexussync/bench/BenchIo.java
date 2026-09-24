@@ -14,6 +14,7 @@ import com.nexus.nexussync.NexussyncException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * Serialization shared by the bench (unit U11): one JSON mapper for the traces and the run record,
@@ -63,11 +64,10 @@ final class BenchIo {
    */
   static void write(ObjectMapper mapper, Path file, Object value) throws NexussyncException {
     try {
-      Path parent = file.toAbsolutePath().getParent();
-      if (parent != null) {
-        Files.createDirectories(parent);
-      }
-      mapper.writeValue(file.toFile(), value);
+      Path absolute = file.toAbsolutePath();
+      // only a file system root has no parent, and a root already exists
+      Files.createDirectories(Optional.ofNullable(absolute.getParent()).orElse(absolute.getRoot()));
+      mapper.writeValue(absolute.toFile(), value);
     } catch (IOException e) {
       throw new NexussyncException("cannot write " + file, e);
     }

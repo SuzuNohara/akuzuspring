@@ -246,7 +246,7 @@ public final class Commands {
    * @param a arguments
    * @return {@value #OK} on success; {@value #USAGE} without experiments; {@value #ERROR} if a name
    *     is not a directory name or the report cannot be written
-   * @implNote O(cost of {@link Comparer#compare(List, Path, LocalDate)}).
+   * @implNote O(cost of {@link Comparer#compare(List, Path, LocalDate, Path)}).
    */
   public int compare(CompareArgs a) {
     if (a.exps().isEmpty()) {
@@ -267,7 +267,7 @@ public final class Commands {
     }
     try {
       Path out = a.dir().toAbsolutePath().normalize().resolve(REPORTS);
-      Path report = Comparer.compare(dirs, out, LocalDate.now(clock));
+      Path report = Comparer.compare(dirs, out, LocalDate.now(clock), couplesDir(a.dir()));
       LOG.info("report {}", report);
       return OK;
     } catch (UncheckedIOException e) {

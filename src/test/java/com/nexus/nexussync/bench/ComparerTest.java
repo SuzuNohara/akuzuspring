@@ -54,11 +54,16 @@ class ComparerTest {
         base.evidence());
   }
 
+  /** Writes the record as {@link CoupleRunner} does: truth redacted to its hash (D-33). */
   private static void save(Path expDir, RunRecord r) throws Exception {
     BenchIo.write(
         BenchIo.JSON,
         expDir.resolve(r.coupleId()).resolve(r.runId()).resolve(CoupleRunner.RECORD),
-        r);
+        TruthRedaction.record(r));
+  }
+
+  private static Map<String, Map<Agent, Map<Feature, Double>>> truthOf(RunRecord r) {
+    return Map.of(r.coupleId(), r.evidence().truthWeights());
   }
 
   // U11-05
@@ -71,7 +76,9 @@ class ComparerTest {
     Path empty = Files.createDirectories(runs.resolve("sin-corridas"));
     Files.createDirectories(runs.resolve("weights"));
 
-    Path report = Comparer.compare(List.of(base, empty), runs.resolve("reports"), DATE);
+    Path report =
+        Comparer.compare(
+            List.of(base, empty), runs.resolve("reports"), DATE, runs.resolve("no-couples"));
 
     assertThat(report).isEqualTo(runs.resolve("reports").resolve("compare-2026-09-24.md"));
     String md = Files.readString(report, StandardCharsets.UTF_8);
@@ -83,7 +90,7 @@ class ComparerTest {
         .contains("| closureF3Rate | 0.5000 | n/a |")
         .contains("| hallucinationRate | 0.5000 | n/a |")
         .contains("| meanSeconds | 1.5000 | n/a |")
-        .contains("| truthAlignment | 1.0000 | n/a |")
+        .contains("| truthAlignment | n/a | n/a |")
         .contains("| hoursParsedRate | n/a | n/a |")
         .contains(Comparer.X5_NOTE);
     for (String metric : Metrics.NAMES) {
@@ -98,8 +105,30 @@ class ComparerTest {
     Path exp = runs.resolve("exp");
     save(exp, r);
 
-    assertThat(Comparer.records(exp)).containsExactly(r);
+    assertThat(Comparer.records(exp, truthOf(r))).containsExactly(r);
+    assertThat(Comparer.records(exp)).singleElement().isNotEqualTo(r);
+    assertThat(Comparer.records(exp).get(0).evidence().truthWeights()).isEmpty();
     assertThat(Comparer.records(runs.resolve("missing"))).isEmpty();
+  }
+
+  // U11-05 (D-33: the truth comes back from the fixtures only when its hash matches)
+  @Test
+  void given_truthRestored_when_compare_then_truthMetricsComputed() throws Exception {
+    RunRecord r = record(Closure.F1, "run-1");
+    Path exp = runs.resolve("exp");
+    save(exp, r);
+    Map<String, Map<Agent, Map<Feature, Double>>> other =
+        Map.of(r.coupleId(), Map.of(Agent.A, Map.of(Feature.PRICE, 1.0)));
+
+    List<RunRecord> restored = Comparer.records(exp, truthOf(r));
+    List<RunRecord> mismatched = Comparer.records(exp, other);
+
+    assertThat(Metrics.of(restored).get(Metrics.TRUTH_ALIGNMENT)).isEqualTo(1.0);
+    assertThat(mismatched.get(0).evidence().truthWeights()).isEmpty();
+    assertThat(Metrics.of(mismatched).get(Metrics.TRUTH_ALIGNMENT)).isNaN();
+    assertThat(Files.readString(exp.resolve("1-2/run-1/record.json")))
+        .doesNotContain("truthWeights")
+        .contains(TruthRedaction.RECORD_KEY);
   }
 
   @Test

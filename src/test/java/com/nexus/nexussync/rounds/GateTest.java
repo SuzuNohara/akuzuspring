@@ -8,7 +8,6 @@ import static org.assertj.core.api.Assertions.entry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
-import com.nexus.nexussync.ann.Envelope;
 import com.nexus.nexussync.catalog.Activity;
 import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.catalog.Daypart;
@@ -56,7 +55,7 @@ class GateTest {
 
   private static final LocalDate TODAY = LocalDate.of(2026, 9, 27);
   private static final Context CTX = context();
-  private static final List<String> F1_A = List.of("s01", "s02", "s03", "s04", "s05");
+  static final List<String> F1_A = List.of("s01", "s02", "s03", "s04", "s05");
 
   private final Gate gate = new Gate();
 
@@ -100,7 +99,7 @@ class GateTest {
     return new Sample(items, List.of(), SampleStatus.OK, Map.of());
   }
 
-  private static RoundsParams rounds(Fill fill, int voteCount, int maxRounds, boolean allowTwoAi) {
+  static RoundsParams rounds(Fill fill, int voteCount, int maxRounds, boolean allowTwoAi) {
     return new RoundsParams(
         5,
         voteCount,
@@ -113,11 +112,11 @@ class GateTest {
         allowTwoAi);
   }
 
-  private static RoundsParams rounds() {
+  static RoundsParams rounds() {
     return rounds(Fill.ALTERNATE_AB, 5, 2, true);
   }
 
-  private static Params params(RoundsParams rp) {
+  static Params params(RoundsParams rp) {
     return params(rp, Path.of("no-such-nexussync"));
   }
 
@@ -161,14 +160,14 @@ class GateTest {
     return gate.run(sample(), CTX, params(rp), ex, runDir, budget);
   }
 
-  private static FakeGateExecutor f1Setup() {
+  static FakeGateExecutor f1Setup() {
     return new FakeGateExecutor()
         .respond(Agent.A, 1, envelope("a", "picks", F1_A.toArray(String[]::new)))
         .respond(Agent.B, 1, envelope("b", "picks", "s05", "s04", "s03", "s02", "s01"))
         .respond(Agent.M, 1, envelope("m", "picks", "s03", "s01", "s02", "s05", "s04"));
   }
 
-  private static FakeGateExecutor f2Setup() {
+  static FakeGateExecutor f2Setup() {
     return new FakeGateExecutor()
         .respond(Agent.A, 1, envelope("a", "picks", F1_A.toArray(String[]::new)))
         .respond(Agent.B, 1, envelope("b", "picks", "s01", "s02", "s06", "s07", "s08"))
@@ -305,39 +304,6 @@ class GateTest {
     assertThat(r.closure()).isEqualTo(Closure.F2);
   }
 
-  // U7-09
-  @Test
-  void given_personaFailsOnce_when_run_then_retriedOnceAndClosesNormally() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1);
-    CallBudget budget = new CallBudget(200);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.F1);
-    assertThat(r.finalIds()).containsExactly("s03", "s01", "s02", "s05", "s04");
-    assertThat(ex.round1Calls()).isEqualTo(2);
-    assertThat(ex.round1Agents())
-        .containsExactly(Set.of(Agent.A, Agent.B, Agent.M), Set.of(Agent.A));
-    assertThat(budget.used()).isEqualTo(4);
-  }
-
-  // D-24
-  @Test
-  void given_bothPersonasFailOnce_when_run_then_retryAsksBothAndKeepsFirstMediator()
-      throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1).failTimes(Agent.B, 1);
-    CallBudget budget = new CallBudget(200);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(ex.round1Agents())
-        .containsExactly(Set.of(Agent.A, Agent.B, Agent.M), Set.of(Agent.A, Agent.B));
-    assertThat(budget.used()).isEqualTo(5);
-    assertThat(r.closure()).isEqualTo(Closure.F1);
-    assertThat(r.round1().get(2).status()).isEqualTo(PickStatus.OK);
-    assertThat(runDir.resolve("round1-2.ann")).content().doesNotContain("--id=m");
-  }
-
   // D-22
   @Test
   @SuppressWarnings("unchecked")
@@ -397,249 +363,6 @@ class GateTest {
         Set.of("ANY"),
         Set.of("QUIET", "CULTURAL"),
         "Una visita");
-  }
-
-  // U7-10
-  @Test
-  void given_personaFailsTwiceAndTwoAiAllowed_when_run_then_degradedF1Filled() throws AnnException {
-    FakeGateExecutor ex =
-        new FakeGateExecutor()
-            .failTimes(Agent.A, 2)
-            .respond(Agent.B, 1, envelope("b", "picks", F1_A.toArray(String[]::new)))
-            .respond(Agent.M, 1, envelope("m", "picks", "s01", "s02", "s09", "s08", "s07"));
-
-    GateResult r = run(ex, rounds(), new CallBudget(200));
-
-    assertThat(r.closure()).isEqualTo(Closure.DEGRADED_F1);
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
-    assertThat(r.round1().get(0).status()).isEqualTo(PickStatus.FAILED);
-    assertThat(ex.round1Calls()).isEqualTo(2);
-    assertThat(ex.round2Calls()).isZero();
-  }
-
-  // U7-10
-  @Test
-  void given_personaFailsAndTwoAiNotAllowed_when_run_then_aiUnavailable() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.B, 2);
-
-    GateResult r = run(ex, rounds(Fill.ALTERNATE_AB, 5, 2, false), new CallBudget(200));
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
-  }
-
-  // U7-10
-  @Test
-  void given_personaAndMediatorFail_when_run_then_aiUnavailable() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.B, 2).failTimes(Agent.M, 1);
-
-    GateResult r = run(ex, rounds(), new CallBudget(200));
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(r.round1()).hasSize(3);
-  }
-
-  // U7-11
-  @Test
-  void given_mediatorDown_when_run_then_pairIntersectionAndFillWithoutMediator()
-      throws AnnException {
-    FakeGateExecutor ex =
-        new FakeGateExecutor()
-            .respond(Agent.A, 1, envelope("a", "picks", F1_A.toArray(String[]::new)))
-            .respond(Agent.B, 1, envelope("b", "picks", "s02", "s01", "s06", "s07", "s08"));
-
-    GateResult r = run(ex, rounds(Fill.MEDIATOR_FIRST, 5, 2, true), new CallBudget(200));
-
-    assertThat(r.closure()).isEqualTo(Closure.F3);
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s06", "s04");
-    assertThat(r.round1().get(2).status()).isEqualTo(PickStatus.FAILED);
-    assertThat(r.round2()).extracting(Pick::status).containsOnly(PickStatus.FAILED);
-    assertThat(ex.round1Calls()).isEqualTo(1);
-  }
-
-  // U7-11
-  @Test
-  void given_mediatorDownAndPairReachesThreshold_when_run_then_closesF1OnPair()
-      throws AnnException {
-    FakeGateExecutor ex =
-        new FakeGateExecutor()
-            .respond(Agent.A, 1, envelope("a", "picks", F1_A.toArray(String[]::new)))
-            .respond(Agent.B, 1, envelope("b", "picks", "s02", "s01", "s06", "s07", "s08"));
-    RoundsParams rp =
-        new RoundsParams(
-            5, 5, 5, Intersection.TRIPLE, 2, Fill.ALTERNATE_AB, RankAggregation.RANK_SUM, 2, true);
-
-    GateResult r = run(ex, rp, new CallBudget(200));
-
-    assertThat(r.closure()).isEqualTo(Closure.F1);
-    assertThat(r.finalIds()).containsExactly("s01", "s02");
-  }
-
-  // U7-12
-  @Test
-  void given_bothPersonasFail_when_run_then_aiUnavailableWithTopOfSample() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 2).failTimes(Agent.B, 2);
-    CallBudget budget = new CallBudget(200);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
-    assertThat(r.remaining()).containsExactly("s10", "s09", "s08", "s07", "s06");
-    assertThat(r.rankSums()).containsEntry("s01", 2);
-    assertThat(r.reasons().get("s01")).containsOnlyKeys(Agent.M);
-    assertThat(ex.round1Calls()).isEqualTo(2);
-    assertThat(budget.used()).isEqualTo(5);
-  }
-
-  // U7-12
-  @Test
-  void given_exhaustedBudget_when_run_then_aiUnavailableWithoutCallingExecutor()
-      throws AnnException {
-    FakeGateExecutor ex = f1Setup();
-
-    GateResult r = run(ex, rounds(), new CallBudget(0));
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(r.round1()).isEmpty();
-    assertThat(ex.round1Calls()).isZero();
-  }
-
-  // U7-09
-  @Test
-  void given_noBudgetForRetry_when_run_then_noRetryAndDegrades() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1);
-
-    GateResult r = run(ex, rounds(), new CallBudget(3));
-
-    assertThat(ex.round1Calls()).isEqualTo(1);
-    assertThat(r.closure()).isEqualTo(Closure.DEGRADED_F1);
-  }
-
-  // U7-05
-  @Test
-  void given_noBudgetForRoundTwo_when_run_then_fillsWithoutVoting() throws AnnException {
-    FakeGateExecutor ex = f2Setup();
-
-    GateResult r = run(ex, rounds(), new CallBudget(3));
-
-    assertThat(ex.round2Calls()).isZero();
-    assertThat(r.closure()).isEqualTo(Closure.F3);
-  }
-
-  // U7-13
-  @Test
-  void given_budgetExhaustedBeforeRoundOne_when_run_then_aiUnavailableWithoutCalls()
-      throws AnnException {
-    FakeGateExecutor ex = f1Setup();
-    CallBudget budget = new CallBudget(2);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
-    assertThat(ex.round1Calls()).isZero();
-    assertThat(budget.used()).isZero();
-    assertThat(ex.round2Calls()).isZero();
-  }
-
-  // U7-13
-  @Test
-  void given_budgetExhaustedBeforeRoundTwo_when_run_then_f3FromRoundOneWithoutVotes()
-      throws AnnException {
-    FakeGateExecutor ex = f2Setup();
-    CallBudget budget = new CallBudget(4);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.F3);
-    assertThat(r.round2()).isEmpty();
-    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s06", "s04");
-    assertThat(ex.round2Calls()).isZero();
-  }
-
-  // D-28
-  @Test
-  void given_oneOrTwoUnitsBeforeRoundOne_when_run_then_nothingConsumedAndNoCalls()
-      throws AnnException {
-    for (int units : List.of(1, 2)) {
-      FakeGateExecutor ex = f1Setup();
-      CallBudget budget = new CallBudget(units);
-
-      GateResult r = run(ex, rounds(), budget);
-
-      assertThat(r.closure()).as("units %d", units).isEqualTo(Closure.AI_UNAVAILABLE);
-      assertThat(budget.used()).as("units %d", units).isZero();
-      assertThat(ex.round1Calls()).as("units %d", units).isZero();
-    }
-  }
-
-  // D-28
-  @Test
-  void given_oneUnitBeforeRoundTwo_when_run_then_unitKeptAndNoVotes() throws AnnException {
-    FakeGateExecutor ex = f2Setup();
-    CallBudget budget = new CallBudget(4);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.F3);
-    assertThat(budget.used()).isEqualTo(3);
-    assertThat(ex.round2Calls()).isZero();
-  }
-
-  // D-28
-  @Test
-  void given_bothPersonasFailAndOneUnitLeft_when_run_then_noPartialRetry() throws AnnException {
-    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1).failTimes(Agent.B, 1);
-    CallBudget budget = new CallBudget(4);
-
-    GateResult r = run(ex, rounds(), budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
-    assertThat(ex.round1Calls()).isEqualTo(1);
-    assertThat(budget.used()).isEqualTo(3);
-  }
-
-  // D-26
-  @Test
-  void given_nonBillableExecutorAndZeroBudget_when_run_then_closesNormallyWithoutConsuming()
-      throws AnnException {
-    FakeGateExecutor fake =
-        f2Setup()
-            .respond(Agent.A, 2, envelope("a", "votes", "s03", "s04", "s05", "s06", "s07"))
-            .respond(Agent.B, 2, envelope("b", "votes", "s03", "s04", "s05", "s06", "s08"))
-            .failTimes(Agent.A, 1);
-    GateExecutor free = new NonBillable(fake);
-    CallBudget budget = new CallBudget(0);
-
-    GateResult r = gate.run(sample(), CTX, params(rounds()), free, runDir, budget);
-
-    assertThat(r.closure()).isEqualTo(Closure.F2);
-    assertThat(fake.round1Calls()).isEqualTo(2);
-    assertThat(fake.round2Calls()).isEqualTo(1);
-    assertThat(budget.used()).isZero();
-    assertThat(f1Setup().billable()).isTrue();
-  }
-
-  /** Delegating executor that calls no real agent (D-26). */
-  private record NonBillable(FakeGateExecutor delegate) implements GateExecutor {
-
-    @Override
-    public Map<Agent, Optional<Envelope>> round1(
-        Path dir, Context ctx, Sample s, Params p, Set<Agent> agents) throws AnnException {
-      return delegate.round1(dir, ctx, s, p, agents);
-    }
-
-    @Override
-    public Map<Agent, Optional<Envelope>> round2(Path dir, List<String> shortlist, Params p)
-        throws AnnException {
-      return delegate.round2(dir, shortlist, p);
-    }
-
-    @Override
-    public boolean billable() {
-      return false;
-    }
   }
 
   // U7-14

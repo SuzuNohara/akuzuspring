@@ -3,10 +3,14 @@ package com.nexus.nexussync.bench;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
+import com.nexus.nexussync.decision.Decision;
 import com.nexus.nexussync.learning.Weights;
 import com.nexus.nexussync.params.Feature;
 import com.nexus.nexussync.rounds.Agent;
 import com.nexus.nexussync.rounds.Closure;
+import com.nexus.nexussync.sampler.Sample;
+import com.nexus.nexussync.sampler.SampleItem;
+import com.nexus.nexussync.sampler.SampleStatus;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -112,22 +116,73 @@ class CalibrationMetricsTest {
         .isCloseTo(2.0 / 3.0, within(1e-12));
   }
 
-  // U13-03
+  // U13-03 (D-32: chapter 8 §8.4, alignment of the decision with A and with B, every run)
   @Test
-  void given_alignmentsWithAandB_when_of_then_fairnessGapIsMeanAbsoluteDifference() {
-    Optional<Weights> learned = Optional.of(BenchFixtures.weights(INTEREST));
+  void given_decisionsAndFinals_when_of_then_fairnessGapIsMeanGapOverEveryRunWithOutcome() {
+    Map<Feature, Double> both = new EnumMap<>(Feature.class);
+    both.put(Feature.INTEREST, 0.5);
+    both.put(Feature.PRICE, 0.5);
     List<RunRecord> rs =
         List.of(
-            run("1-2", 1, List.of(), List.of(), learned, truth(INTEREST, PRICE), 0),
-            run("1-2", 2, List.of(), List.of(), learned, truth(INTEREST, INTEREST), 0),
-            run("1-2", 3, List.of(), List.of(), Optional.empty(), truth(INTEREST, PRICE), 0),
-            run("1-2", 4, List.of(), List.of(), learned, Map.of(Agent.A, INTEREST), 0),
-            run("1-2", 5, List.of(), List.of(), learned, truth(INTEREST, Map.of()), 0));
+            decided("x", truth(INTEREST, PRICE)),
+            decided("x", truth(INTEREST, INTEREST)),
+            undecided(List.of("x", "y"), truth(INTEREST, PRICE)),
+            decided("x", Map.of(Agent.A, INTEREST)),
+            undecided(List.of("absent"), truth(INTEREST, PRICE)));
 
     double gap = Metrics.of(rs, GOLD).get(Metrics.FAIRNESS_GAP);
 
-    assertThat(gap).isEqualTo(0.5).isBetween(0.0, 1.0);
-    assertThat(Metrics.of(rs.subList(2, 5), GOLD).get(Metrics.FAIRNESS_GAP)).isNaN();
+    assertThat(gap).isCloseTo(1.0 / 3, within(1e-9)).isBetween(0.0, 1.0);
+    assertThat(Metrics.of(rs.subList(3, 5), GOLD).get(Metrics.FAIRNESS_GAP)).isNaN();
+    assertThat(Metrics.of(List.of(decided("x", truth(both, both))), GOLD))
+        .containsEntry(Metrics.FAIRNESS_GAP, 0.0);
+  }
+
+  // U13-03
+  @Test
+  void given_decisionWithoutLearnedWeights_when_of_then_runStillCountsForFairness() {
+    RunRecord r = decided("y", truth(INTEREST, PRICE));
+
+    assertThat(r.after()).isEmpty();
+    assertThat(Metrics.of(List.of(r), GOLD).get(Metrics.FAIRNESS_GAP)).isEqualTo(1.0);
+  }
+
+  /** Sample {@code x} = pure interest, {@code y} = pure price. */
+  private static Sample fairnessSample() {
+    return new Sample(
+        List.of(new SampleItem("x", 1.0, INTEREST, false), new SampleItem("y", 1.0, PRICE, false)),
+        List.of(),
+        SampleStatus.OK,
+        Map.of());
+  }
+
+  /** Run whose couple chose {@code chosen} out of {@code x, y}; nothing learned. */
+  private static RunRecord decided(String chosen, Map<Agent, Map<Feature, Double>> truth) {
+    Decision d = new Decision(chosen, Map.of(chosen, 6), List.of(), List.of(), false, List.of());
+    return fairnessRun(List.of("x", "y"), Optional.of(d), truth);
+  }
+
+  /** Run with a final list and no decision. */
+  private static RunRecord undecided(List<String> finalIds, Map<Agent, Map<Feature, Double>> t) {
+    return fairnessRun(finalIds, Optional.empty(), t);
+  }
+
+  private static RunRecord fairnessRun(
+      List<String> finalIds, Optional<Decision> d, Map<Agent, Map<Feature, Double>> truth) {
+    return new RunRecord(
+        "exp-1-2-f",
+        "1-2",
+        "exp",
+        "abcd1234",
+        1L,
+        fairnessSample(),
+        BenchFixtures.gate(Closure.F1, finalIds, List.of(), List.of()),
+        d,
+        Optional.empty(),
+        BenchFixtures.weights(INTEREST),
+        Optional.empty(),
+        Duration.ofSeconds(1),
+        new RunRecord.Evidence(truth, 0, List.of(), 0, 0, 0));
   }
 
   // U13-04

@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -27,11 +28,12 @@ import java.util.stream.Stream;
  * forbidden_types: [BAR]        # optional, default []
  * forbidden_ids: [a-042]        # optional, default []
  * notes: "..."                  # optional, default ""
+ * reviewed_by: "Suzu"           # optional: absent = draft (D-CAL-1)
  * </pre>
  *
- * <p>Any other key, a missing or empty {@code expected_types}, a non-list set, a non-text item or
- * two files labelling the same couple are errors. Couples without a file are simply absent from the
- * result.
+ * <p>Any other key, a {@code reviewed_by} that is not a non-blank text, a missing or empty {@code
+ * expected_types}, a non-list set, a non-text item or two files labelling the same couple are
+ * errors. Couples without a file are simply absent from the result.
  */
 public final class GoldSet {
 
@@ -41,8 +43,9 @@ public final class GoldSet {
   private static final String FORBIDDEN_TYPES = "forbidden_types";
   private static final String FORBIDDEN_IDS = "forbidden_ids";
   private static final String NOTES = "notes";
+  private static final String REVIEWED_BY = "reviewed_by";
   private static final Set<String> KEYS =
-      Set.of(COUPLE_ID, EXPECTED, FORBIDDEN_TYPES, FORBIDDEN_IDS, NOTES);
+      Set.of(COUPLE_ID, EXPECTED, FORBIDDEN_TYPES, FORBIDDEN_IDS, NOTES, REVIEWED_BY);
 
   private GoldSet() {}
 
@@ -98,7 +101,19 @@ public final class GoldSet {
         expected,
         texts(root, FORBIDDEN_TYPES, file),
         texts(root, FORBIDDEN_IDS, file),
-        notes.isMissingNode() || notes.isNull() ? "" : notes.asText());
+        notes.isMissingNode() || notes.isNull() ? "" : notes.asText(),
+        reviewedBy(root, file));
+  }
+
+  private static Optional<String> reviewedBy(JsonNode root, Path file) throws ParamsException {
+    JsonNode node = root.path(REVIEWED_BY);
+    if (node.isMissingNode() || node.isNull()) {
+      return Optional.empty();
+    }
+    if (!node.isTextual() || node.asText().isBlank()) {
+      throw new ParamsException(REVIEWED_BY + " must be a non-blank text in " + file);
+    }
+    return Optional.of(node.asText());
   }
 
   private static JsonNode read(Path file) throws ParamsException {

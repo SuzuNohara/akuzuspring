@@ -48,6 +48,21 @@ class GoldSetTest {
     assertThat(hogar.notes()).isEmpty();
   }
 
+  // U13-01 (reviewed_by: optional key, absent or null = draft)
+  @Test
+  void given_reviewedByKey_when_load_then_reviewerKeptAndDraftsEmpty() throws Exception {
+    write("a.yml", "couple_id: \"1-2\"\nexpected_types: [PARK]\nreviewed_by: \"Suzu\"\n");
+    write("b.yml", "couple_id: \"3-4\"\nexpected_types: [PARK]\nreviewed_by: null\n");
+    write("c.yml", "couple_id: \"5-6\"\nexpected_types: [PARK]\n");
+
+    Map<String, GoldEntry> gold = GoldSet.load(dir);
+
+    assertThat(gold.get("1-2").reviewedBy()).contains("Suzu");
+    assertThat(gold.get("3-4").reviewedBy()).isEmpty();
+    assertThat(gold.get("5-6").reviewedBy()).isEmpty();
+    assertThat(new GoldEntry("7-8", Set.of("PARK"), Set.of(), Set.of(), "").reviewedBy()).isEmpty();
+  }
+
   // U13-01
   @Test
   void given_coupleWithoutGold_when_load_then_absentWithoutError() throws Exception {
@@ -84,6 +99,8 @@ class GoldSetTest {
             "couple_id: \"1-2\"\nexpected_types: PARK\n",
             "couple_id: \"1-2\"\nexpected_types: [[PARK]]\n",
             "couple_id: \"1-2\"\nexpected_types: [null]\n",
+            "couple_id: \"1-2\"\nexpected_types: [PARK]\nreviewed_by: \" \"\n",
+            "couple_id: \"1-2\"\nexpected_types: [PARK]\nreviewed_by: [Suzu]\n",
             "- just\n- a list\n",
             "couple_id: [unclosed\n");
     for (String yaml : invalid) {

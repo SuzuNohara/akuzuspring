@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,9 +54,13 @@ import java.util.stream.Stream;
  *   <li>{@value #GOLD_HIT}: share of R_g whose final types meet {@code expected_types}.
  *   <li>{@value #GOLD_VIOLATION}: share of R_g whose final list holds a {@code forbidden_type} or a
  *       {@code forbidden_id}.
- *   <li>{@value #FAIRNESS_GAP}: mean over the runs with learned weights and both persons' {@code
- *       truthWeights} of {@code |τ_A − τ_B|}, τ_X being the cosine between the learned weights and
- *       X's {@code truthWeights} (the per-person term of {@value #TRUTH_ALIGNMENT}).
+ *   <li>{@value #FAIRNESS_GAP}: chapter 8 §8.4, {@code (1/|R|) Σ_r |τ_A(r) − τ_B(r)|}, τ_X(r) ∈ [0,
+ *       1] being the alignment of the outcome of r with X's {@code truthWeights}. The outcome is
+ *       the decision (D-32): τ_X(r) is {@code Scorer.score} of the sample features of the chosen
+ *       activity under X's {@code truthWeights}; a run without decision falls back to the mean of
+ *       that score over its final list, so every run with a result counts, with or without learned
+ *       weights. Only the runs where τ cannot be computed are left out: a person without {@code
+ *       truthWeights}, or no outcome id present in the sample.
  *   <li>{@value #STABILITY}: per couple, mean Jaccard of the final lists of every pair of distinct
  *       seeds (runs paired by iteration order within each seed; two empty lists count as 1), then
  *       mean over the couples with at least two seeds.
@@ -234,16 +239,34 @@ public final class Metrics {
 
   private static Optional<Double> gap(RunRecord r) {
     Map<Agent, Map<Feature, Double>> truth = r.evidence().truthWeights();
-    if (r.after().isEmpty() || !truth.containsKey(Agent.A) || !truth.containsKey(Agent.B)) {
+    if (!truth.containsKey(Agent.A) || !truth.containsKey(Agent.B)) {
       return Optional.empty();
     }
-    Map<Feature, Double> w = r.after().get().w();
-    Optional<Double> a = cosine(w, truth.get(Agent.A));
-    Optional<Double> b = cosine(w, truth.get(Agent.B));
-    if (a.isEmpty() || b.isEmpty()) {
+    List<Map<Feature, Double>> outcome = outcome(r);
+    if (outcome.isEmpty()) {
       return Optional.empty();
     }
-    return Optional.of(Math.abs(a.get() - b.get()));
+    double a = alignment(outcome, truth.get(Agent.A));
+    double b = alignment(outcome, truth.get(Agent.B));
+    return Optional.of(Math.abs(a - b));
+  }
+
+  /**
+   * Sample features of the outcome of a run: the chosen activity when there is a decision, every
+   * final id otherwise; ids absent from the sample are skipped.
+   */
+  private static List<Map<Feature, Double>> outcome(RunRecord r) {
+    List<String> ids = r.decision().map(d -> List.of(d.chosen())).orElse(r.gate().finalIds());
+    Map<String, Map<Feature, Double>> features = new HashMap<>();
+    for (SampleItem item : r.sample().items()) {
+      features.putIfAbsent(item.activityId(), item.features());
+    }
+    return ids.stream().filter(features::containsKey).map(features::get).toList();
+  }
+
+  /** τ_X: mean truth score of the outcome under {@code truth}, in [0, 1]. */
+  private static double alignment(List<Map<Feature, Double>> outcome, Map<Feature, Double> truth) {
+    return outcome.stream().mapToDouble(x -> Scorer.score(x, truth)).average().orElse(0.0);
   }
 
   private static double stabilityAtSeed(List<RunRecord> rs) {

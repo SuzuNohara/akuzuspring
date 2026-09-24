@@ -1,5 +1,7 @@
 package com.nexus.nexussync.bench;
 
+import com.nexus.nexussync.params.Feature;
+import com.nexus.nexussync.rounds.Agent;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -63,11 +65,36 @@ public final class Comparer {
    * @implNote Same as {@link #compare(List, Path)}.
    */
   public static Path compare(List<Path> expDirs, Path out, LocalDate date) {
+    return compare(expDirs, out, date, Map.of());
+  }
+
+  /**
+   * Writes {@code out/compare-<date>.md}, restoring the hidden truth of the runs from the couple
+   * files of {@code couplesDir} (D-33: {@code record.json} only holds its hash).
+   *
+   * @param expDirs experiment directories, one column each, in this order
+   * @param out directory of the reports, created if missing
+   * @param date date in the name and title of the report
+   * @param couplesDir directory of the couple fixtures; missing means no truth
+   * @return the written report
+   * @throws UncheckedIOException if a record or couple cannot be read or the report cannot be
+   *     written
+   * @implNote Same as {@link #compare(List, Path)} plus O(c) couple files read.
+   */
+  public static Path compare(List<Path> expDirs, Path out, LocalDate date, Path couplesDir) {
+    return compare(expDirs, out, date, TruthRedaction.fixtureTruth(couplesDir));
+  }
+
+  private static Path compare(
+      List<Path> expDirs,
+      Path out,
+      LocalDate date,
+      Map<String, Map<Agent, Map<Feature, Double>>> truth) {
     List<String> names = new ArrayList<>();
     List<Map<String, Double>> metrics = new ArrayList<>();
     List<Integer> counts = new ArrayList<>();
     for (Path dir : expDirs) {
-      List<RunRecord> runs = records(dir);
+      List<RunRecord> runs = records(dir, truth);
       names.add(String.valueOf(dir.getFileName()));
       metrics.add(Metrics.of(runs));
       counts.add(runs.size());
@@ -91,6 +118,20 @@ public final class Comparer {
    * @implNote O(f + r) time, f files walked, r records; O(r) space.
    */
   static List<RunRecord> records(Path expDir) {
+    return records(expDir, Map.of());
+  }
+
+  /**
+   * Reads every {@code record.json} under an experiment directory, in path order, restoring the
+   * truth whose hash matches ({@link TruthRedaction#read}).
+   *
+   * @param expDir experiment directory; a missing directory has no runs
+   * @param truth truth weights by couple id and person
+   * @return the records
+   * @throws UncheckedIOException if the directory cannot be walked or a record cannot be parsed
+   * @implNote O(f + r) time, f files walked, r records; O(r) space.
+   */
+  static List<RunRecord> records(Path expDir, Map<String, Map<Agent, Map<Feature, Double>>> truth) {
     if (!Files.isDirectory(expDir)) {
       return List.of();
     }
@@ -107,7 +148,7 @@ public final class Comparer {
     List<RunRecord> out = new ArrayList<>();
     for (Path f : files) {
       try {
-        out.add(BenchIo.JSON.readValue(f.toFile(), RunRecord.class));
+        out.add(TruthRedaction.read(BenchIo.JSON.readTree(f.toFile()), truth));
       } catch (IOException e) {
         throw new UncheckedIOException("cannot read " + f, e);
       }

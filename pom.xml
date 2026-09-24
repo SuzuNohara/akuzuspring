@@ -47,8 +47,10 @@
                     -> 0.0578 al fusionar nexus-AUTH-06: los dos conjuntos de tests corren
                        juntos, asi que la cobertura es la UNION, no el maximo de las dos.
                     -> 0.0762 con nexus-SCHEMA-01: AvailabilityControllerTest recorre
-                       saveUserSchedule (guarda de dia repetido) y los *IT de repositorio. -->
-        <jacoco.bundle.line.min>0.0762</jacoco.bundle.line.min>
+                       saveUserSchedule (guarda de dia repetido) y los *IT de repositorio.
+                    -> 0.6453 con nexus-NEXUSSYNC-01 (T-66): el paquete com.nexus.nexussync entra
+                       en el informe con ~98 % de linea. -->
+        <jacoco.bundle.line.min>0.6453</jacoco.bundle.line.min>
 
         <!-- nexus-NEXUSSYNC-01: el paquete com.nexus.nexussync (pipeline de sugerencias, Java puro sin
              Spring) trae sus propias puertas ACOTADAS AL PAQUETE: fmt, checkstyle, spotbugs+findsecbugs y

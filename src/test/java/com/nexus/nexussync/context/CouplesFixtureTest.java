@@ -3,10 +3,18 @@ package com.nexus.nexussync.context;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nexus.nexussync.params.MediatorClimate;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -138,5 +146,34 @@ class CouplesFixtureTest {
     assertThat(couple.a().constraints().budgetBand()).isEqualTo("LOW");
     assertThat(couple.a().preferences()).containsEntry("quedarse-en-casa", 5);
     assertThat(couple.b().preferences()).containsEntry("quedarse-en-casa", 5);
+  }
+
+  // U3-01 (NOVELTY and COOLDOWN only see the history when its ids are catalog ids)
+  @Test
+  void given_every_couple_when_load_then_every_history_id_exists_in_synthetic_catalog()
+      throws Exception {
+    Path csv = couplesDir().resolveSibling("catalog-synthetic").resolve("activities.csv");
+    Set<String> catalog = new HashSet<>();
+    try (Reader in = Files.newBufferedReader(csv, StandardCharsets.UTF_8);
+        CSVParser parser =
+            CSVFormat.DEFAULT.builder().setHeader().setSkipHeaderRecord(true).build().parse(in)) {
+      parser.forEach(r -> catalog.add(r.get("activity_id")));
+    }
+    List<Path> files;
+    try (Stream<Path> list = Files.list(couplesDir())) {
+      files = list.filter(f -> f.toString().endsWith(".json")).sorted().toList();
+    }
+
+    assertThat(catalog).hasSize(80);
+    assertThat(files).hasSize(10);
+    for (Path file : files) {
+      ProfileLoader.CoupleFile couple = ProfileLoader.loadCouple(file);
+      for (Profile p : List.of(couple.a(), couple.b())) {
+        assertThat(p.history())
+            .as(file.getFileName().toString())
+            .extracting(HistoryEntry::activityId)
+            .allMatch(catalog::contains);
+      }
+    }
   }
 }

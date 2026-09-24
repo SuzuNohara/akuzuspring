@@ -22,7 +22,7 @@ class OutputReaderTest {
   private static final String FRONT =
       "---\nid: "
           + RUN_ID
-          + "\nagent: nexussync\nstatus: ok\nfinished: 2026-09-24T00:10:09Z\n---\n";
+          + "\nagent: nexussync\nstatus: success\nfinished: 2026-09-24T00:10:09Z\n---\n";
 
   @TempDir Path home;
 
@@ -51,13 +51,13 @@ class OutputReaderTest {
     RunOutput out = OutputReader.read(home, RUN_ID);
 
     assertThat(out.runId()).isEqualTo(RUN_ID);
-    assertThat(out.status()).isEqualTo("ok");
+    assertThat(out.status()).isEqualTo("success");
     assertThat(out.stdout()).isEmpty();
     assertThat(out.stderr()).isEmpty();
     assertThat(out.elapsed()).isEqualTo(Duration.ZERO);
     assertThat(out.envelopes()).containsOnlyKeys("a", "b", "m");
     Envelope a = out.envelopes().get("a");
-    assertThat(a.status()).isEqualTo("ok");
+    assertThat(a.status()).isEqualTo("success");
     assertThat(a.payload()).containsEntry("picks", List.of("x", "y"));
     assertThat(a.payload()).containsEntry("reasons", List.of("cerca de casa", "novedad"));
     assertThat(out.envelopes().get("b").payload()).containsEntry("picks", List.of("y", "z"));
@@ -130,7 +130,7 @@ class OutputReaderTest {
 
   @Test
   void givenBlockWithoutId_whenRead_thenParseError() throws Exception {
-    writeOutput(FRONT + block("status: ok\npayload:\n  picks: [x]\n"));
+    writeOutput(FRONT + block("status: success\npayload:\n  picks: [x]\n"));
 
     assertParseError();
   }
@@ -144,7 +144,7 @@ class OutputReaderTest {
 
   @Test
   void givenRepeatedId_whenRead_thenParseError() throws Exception {
-    writeOutput(FRONT + block("id: a\nstatus: ok\n") + block("id: a\nstatus: ok\n"));
+    writeOutput(FRONT + block("id: a\nstatus: success\n") + block("id: a\nstatus: success\n"));
 
     assertParseError();
   }
@@ -168,7 +168,7 @@ class OutputReaderTest {
 
   @Test
   void givenScalarPayload_whenRead_thenWrappedUnderValue() throws Exception {
-    writeOutput(FRONT + block("id: m\nstatus: ok\npayload: hola\n"));
+    writeOutput(FRONT + block("id: m\nstatus: success\npayload: hola\n"));
 
     Envelope m = OutputReader.read(home, RUN_ID).envelopes().get("m");
 
@@ -177,7 +177,7 @@ class OutputReaderTest {
 
   @Test
   void givenNonStringPayloadKeys_whenRead_thenKeysAreStringified() throws Exception {
-    writeOutput(FRONT + block("id: 7\nstatus: ok\npayload:\n  1: uno\n"));
+    writeOutput(FRONT + block("id: 7\nstatus: success\npayload:\n  1: uno\n"));
 
     Envelope seven = OutputReader.read(home, RUN_ID).envelopes().get("7");
 

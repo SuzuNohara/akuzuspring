@@ -69,7 +69,7 @@ class ArkannieRunnerTest {
     assertThat(fake.lastEnv()).isEqualTo(Map.of("ARKANNIE_HOME", home.toString()));
     assertThat(fake.lastTimeout()).contains(TIMEOUT);
     assertThat(out.envelopes()).containsOnlyKeys("a", "b", "m");
-    assertThat(out.status()).isEqualTo("ok");
+    assertThat(out.status()).isEqualTo("success");
     assertThat(out.stdout()).isEqualTo("out");
     assertThat(out.stderr()).isEqualTo("err");
     assertThat(out.elapsed()).isEqualTo(Duration.ofSeconds(8));

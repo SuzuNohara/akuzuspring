@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.entry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
+import com.nexus.nexussync.ann.Envelope;
 import com.nexus.nexussync.catalog.Activity;
 import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.catalog.Daypart;
@@ -538,6 +539,7 @@ class GateTest {
     assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
     assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
     assertThat(ex.round1Calls()).isZero();
+    assertThat(budget.used()).isZero();
     assertThat(ex.round2Calls()).isZero();
   }
 
@@ -554,6 +556,90 @@ class GateTest {
     assertThat(r.round2()).isEmpty();
     assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s06", "s04");
     assertThat(ex.round2Calls()).isZero();
+  }
+
+  // D-28
+  @Test
+  void given_oneOrTwoUnitsBeforeRoundOne_when_run_then_nothingConsumedAndNoCalls()
+      throws AnnException {
+    for (int units : List.of(1, 2)) {
+      FakeGateExecutor ex = f1Setup();
+      CallBudget budget = new CallBudget(units);
+
+      GateResult r = run(ex, rounds(), budget);
+
+      assertThat(r.closure()).as("units %d", units).isEqualTo(Closure.AI_UNAVAILABLE);
+      assertThat(budget.used()).as("units %d", units).isZero();
+      assertThat(ex.round1Calls()).as("units %d", units).isZero();
+    }
+  }
+
+  // D-28
+  @Test
+  void given_oneUnitBeforeRoundTwo_when_run_then_unitKeptAndNoVotes() throws AnnException {
+    FakeGateExecutor ex = f2Setup();
+    CallBudget budget = new CallBudget(4);
+
+    GateResult r = run(ex, rounds(), budget);
+
+    assertThat(r.closure()).isEqualTo(Closure.F3);
+    assertThat(budget.used()).isEqualTo(3);
+    assertThat(ex.round2Calls()).isZero();
+  }
+
+  // D-28
+  @Test
+  void given_bothPersonasFailAndOneUnitLeft_when_run_then_noPartialRetry() throws AnnException {
+    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1).failTimes(Agent.B, 1);
+    CallBudget budget = new CallBudget(4);
+
+    GateResult r = run(ex, rounds(), budget);
+
+    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
+    assertThat(ex.round1Calls()).isEqualTo(1);
+    assertThat(budget.used()).isEqualTo(3);
+  }
+
+  // D-26
+  @Test
+  void given_nonBillableExecutorAndZeroBudget_when_run_then_closesNormallyWithoutConsuming()
+      throws AnnException {
+    FakeGateExecutor fake =
+        f2Setup()
+            .respond(Agent.A, 2, envelope("a", "votes", "s03", "s04", "s05", "s06", "s07"))
+            .respond(Agent.B, 2, envelope("b", "votes", "s03", "s04", "s05", "s06", "s08"))
+            .failTimes(Agent.A, 1);
+    GateExecutor free = new NonBillable(fake);
+    CallBudget budget = new CallBudget(0);
+
+    GateResult r = gate.run(sample(), CTX, params(rounds()), free, runDir, budget);
+
+    assertThat(r.closure()).isEqualTo(Closure.F2);
+    assertThat(fake.round1Calls()).isEqualTo(2);
+    assertThat(fake.round2Calls()).isEqualTo(1);
+    assertThat(budget.used()).isZero();
+    assertThat(f1Setup().billable()).isTrue();
+  }
+
+  /** Delegating executor that calls no real agent (D-26). */
+  private record NonBillable(FakeGateExecutor delegate) implements GateExecutor {
+
+    @Override
+    public Map<Agent, Optional<Envelope>> round1(
+        Path dir, Context ctx, Sample s, Params p, Set<Agent> agents) throws AnnException {
+      return delegate.round1(dir, ctx, s, p, agents);
+    }
+
+    @Override
+    public Map<Agent, Optional<Envelope>> round2(Path dir, List<String> shortlist, Params p)
+        throws AnnException {
+      return delegate.round2(dir, shortlist, p);
+    }
+
+    @Override
+    public boolean billable() {
+      return false;
+    }
   }
 
   // U7-14

@@ -1,0 +1,6 @@
+# Gold de prueba (U13-01): pareja opuestos.
+couple_id: "101-102"
+expected_types: [PARK, MUSEUM]
+forbidden_types: [BAR]
+forbidden_ids: [act-999]
+notes: "museo o parque; nada de bares"

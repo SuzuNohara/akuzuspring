@@ -6,6 +6,7 @@ import com.nexus.nexussync.rounds.Closure;
 import com.nexus.nexussync.rounds.Pick;
 import com.nexus.nexussync.sampler.SampleItem;
 import com.nexus.nexussync.sampler.Scorer;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -14,6 +15,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.ToDoubleFunction;
 import java.util.stream.Stream;
 
@@ -37,9 +40,27 @@ import java.util.stream.Stream;
  *   <li>{@value #TRUTH_ALIGNMENT}: mean over the runs with learned weights of the mean cosine
  *       between those weights and the {@code truthWeights} of each person that has them.
  *   <li>{@value #CHOSEN_TOP3}: share of successful persona picks of round one whose first id is in
- *       the top 3 of the sample ordered by the score with that person's {@code truthWeights}.
+ *       the top 3 of the sample ordered by the score with that person's {@code truthWeights}; a
+ *       successful pick without ids is left out of the denominator (D-29).
  *   <li>{@value #HOURS_PARSED}: proposed places with interpreted hours over proposed places with
  *       non-empty hours.
+ * </ul>
+ *
+ * <p>Calibration metrics ({@link #of(List, Map)}, Fase C2, U13-02..04), R_g being the runs of
+ * couples with a {@link GoldEntry}:
+ *
+ * <ul>
+ *   <li>{@value #GOLD_HIT}: share of R_g whose final types meet {@code expected_types}.
+ *   <li>{@value #GOLD_VIOLATION}: share of R_g whose final list holds a {@code forbidden_type} or a
+ *       {@code forbidden_id}.
+ *   <li>{@value #FAIRNESS_GAP}: mean over the runs with learned weights and both persons' {@code
+ *       truthWeights} of {@code |τ_A − τ_B|}, τ_X being the cosine between the learned weights and
+ *       X's {@code truthWeights} (the per-person term of {@value #TRUTH_ALIGNMENT}).
+ *   <li>{@value #STABILITY}: per couple, mean Jaccard of the final lists of every pair of distinct
+ *       seeds (runs paired by iteration order within each seed; two empty lists count as 1), then
+ *       mean over the couples with at least two seeds.
+ *   <li>{@value #CALLS_PER_RUN}: mean agent calls consumed per run ({@link
+ *       RunRecord.Evidence#calls()}).
  * </ul>
  */
 public final class Metrics {
@@ -76,6 +97,25 @@ public final class Metrics {
 
   /** Proposed places with interpreted hours over those with non-empty hours. */
   public static final String HOURS_PARSED = "hoursParsedRate";
+
+  /** Share of gold runs whose final types meet the expected ones. */
+  public static final String GOLD_HIT = "goldHitRate";
+
+  /** Share of gold runs whose final list holds a forbidden type or id. */
+  public static final String GOLD_VIOLATION = "goldViolationRate";
+
+  /** Mean absolute difference between the alignments with A's and B's truth. */
+  public static final String FAIRNESS_GAP = "fairnessGap";
+
+  /** Mean Jaccard of the final lists between seeds. */
+  public static final String STABILITY = "stabilityAtSeed";
+
+  /** Mean agent calls consumed per run. */
+  public static final String CALLS_PER_RUN = "callsPerRun";
+
+  /** Calibration metrics added by {@link #of(List, Map)}, in report order. */
+  public static final List<String> CALIBRATION_NAMES =
+      List.of(GOLD_HIT, GOLD_VIOLATION, FAIRNESS_GAP, STABILITY, CALLS_PER_RUN);
 
   /** Every metric, in report order. */
   public static final List<String> NAMES =
@@ -122,6 +162,121 @@ public final class Metrics {
             rs.stream().mapToDouble(r -> r.evidence().hoursParsed()).sum(),
             rs.stream().mapToDouble(r -> r.evidence().hoursDeclared()).sum()));
     return Collections.unmodifiableMap(out);
+  }
+
+  /**
+   * Computes the eleven metrics of {@link #of(List)} followed by the five calibration metrics of
+   * {@link #CALIBRATION_NAMES}.
+   *
+   * @param rs runs of one experiment
+   * @param gold gold entries by {@code coupleId}; couples without entry are left out of the gold
+   *     metrics
+   * @return every metric of {@link #NAMES} and {@link #CALIBRATION_NAMES}, in that order; NaN where
+   *     there is no data
+   * @implNote O(r · (s log s + k) + c · q² · n) time and O(r · n) space, r runs, s sample size, k
+   *     picked ids, c couples, q seeds per couple, n final size.
+   */
+  public static Map<String, Double> of(List<RunRecord> rs, Map<String, GoldEntry> gold) {
+    Map<String, Double> out = new LinkedHashMap<>(of(rs));
+    out.put(GOLD_HIT, gold(rs, gold, Metrics::hits));
+    out.put(GOLD_VIOLATION, gold(rs, gold, Metrics::violates));
+    out.put(FAIRNESS_GAP, fairnessGap(rs));
+    out.put(STABILITY, stabilityAtSeed(rs));
+    out.put(CALLS_PER_RUN, share(rs, r -> r.evidence().calls()));
+    return Collections.unmodifiableMap(out);
+  }
+
+  /**
+   * Jaccard index of two id lists taken as sets; two empty lists are identical (1).
+   *
+   * @param x first list
+   * @param y second list
+   * @return {@code |x ∩ y| / |x ∪ y|} in {@code [0, 1]}
+   * @implNote O(|x| + |y|) time and space.
+   */
+  static double jaccard(Collection<String> x, Collection<String> y) {
+    Set<String> union = new HashSet<>(x);
+    union.addAll(y);
+    if (union.isEmpty()) {
+      return 1.0;
+    }
+    Set<String> inter = new HashSet<>(x);
+    inter.retainAll(new HashSet<>(y));
+    return (double) inter.size() / union.size();
+  }
+
+  private static double gold(
+      List<RunRecord> rs, Map<String, GoldEntry> gold, BiPredicate<RunRecord, GoldEntry> test) {
+    return rs.stream()
+        .filter(r -> gold.containsKey(r.coupleId()))
+        .mapToDouble(r -> test.test(r, gold.get(r.coupleId())) ? 1 : 0)
+        .average()
+        .orElse(Double.NaN);
+  }
+
+  private static boolean hits(RunRecord r, GoldEntry g) {
+    return r.evidence().finalTypes().stream().anyMatch(g.expectedTypes()::contains);
+  }
+
+  private static boolean violates(RunRecord r, GoldEntry g) {
+    return r.evidence().finalTypes().stream().anyMatch(g.forbiddenTypes()::contains)
+        || r.gate().finalIds().stream().anyMatch(g.forbiddenIds()::contains);
+  }
+
+  private static double fairnessGap(List<RunRecord> rs) {
+    return rs.stream()
+        .map(Metrics::gap)
+        .flatMap(Optional::stream)
+        .mapToDouble(Double::doubleValue)
+        .average()
+        .orElse(Double.NaN);
+  }
+
+  private static Optional<Double> gap(RunRecord r) {
+    Map<Agent, Map<Feature, Double>> truth = r.evidence().truthWeights();
+    if (r.after().isEmpty() || !truth.containsKey(Agent.A) || !truth.containsKey(Agent.B)) {
+      return Optional.empty();
+    }
+    Map<Feature, Double> w = r.after().get().w();
+    Optional<Double> a = cosine(w, truth.get(Agent.A));
+    Optional<Double> b = cosine(w, truth.get(Agent.B));
+    if (a.isEmpty() || b.isEmpty()) {
+      return Optional.empty();
+    }
+    return Optional.of(Math.abs(a.get() - b.get()));
+  }
+
+  private static double stabilityAtSeed(List<RunRecord> rs) {
+    Map<String, Map<Long, List<List<String>>>> byCouple = new LinkedHashMap<>();
+    for (RunRecord r : rs) {
+      byCouple
+          .computeIfAbsent(r.coupleId(), c -> new LinkedHashMap<>())
+          .computeIfAbsent(r.seed(), s -> new ArrayList<>())
+          .add(r.gate().finalIds());
+    }
+    return byCouple.values().stream()
+        .map(Metrics::coupleStability)
+        .flatMap(Optional::stream)
+        .mapToDouble(Double::doubleValue)
+        .average()
+        .orElse(Double.NaN);
+  }
+
+  /** Mean Jaccard over the pairs of distinct seeds of one couple, runs paired by position. */
+  private static Optional<Double> coupleStability(Map<Long, List<List<String>>> bySeed) {
+    List<List<List<String>>> seeds = new ArrayList<>(bySeed.values());
+    double sum = 0.0;
+    int pairs = 0;
+    for (int i = 0; i < seeds.size(); i++) {
+      for (int j = i + 1; j < seeds.size(); j++) {
+        int n = Math.min(seeds.get(i).size(), seeds.get(j).size());
+        for (int it = 0; it < n; it++) {
+          sum += jaccard(seeds.get(i).get(it), seeds.get(j).get(it));
+          pairs++;
+        }
+      }
+    }
+    return pairs == 0 ? Optional.empty() : Optional.of(sum / pairs);
   }
 
   /**
@@ -211,7 +366,7 @@ public final class Metrics {
     for (RunRecord r : rs) {
       for (Pick pick : r.gate().round1()) {
         Map<Feature, Double> truth = r.evidence().truthWeights().get(pick.agent());
-        if (pick.agent() != Agent.M && pick.ok() && truth != null) {
+        if (pick.agent() != Agent.M && pick.ok() && !pick.ids().isEmpty() && truth != null) {
           total++;
           hits += topByTruth(r.sample().items(), truth).contains(pick.ids().get(0)) ? 1 : 0;
         }

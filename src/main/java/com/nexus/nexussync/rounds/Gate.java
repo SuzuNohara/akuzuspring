@@ -47,10 +47,13 @@ import java.util.TreeSet;
  * or the call budget exhausted before round one: {@link Closure#AI_UNAVAILABLE} with the top {@code
  * finalSize} of the sample by score.
  *
- * <p>Every agent call, retries included, consumes one unit of the {@link CallBudget}; if a unit
- * cannot be obtained the executor is not called. The retry dispatches only the failed personas
- * (D-24) and its answers are merged with those of the first attempt, so {@link CallBudget#used()}
- * equals the number of real dispatches.
+ * <p>Every agent call, retries included, consumes one unit of the {@link CallBudget}. The units of
+ * a round or a retry are reserved at once ({@link CallBudget#tryConsume(int)}, D-28): three for
+ * round one, two for round two, one per failed persona for the retry; if they cannot all be
+ * reserved nothing is consumed and the executor is not called. The retry dispatches only the failed
+ * personas (D-24) and its answers are merged with those of the first attempt, so {@link
+ * CallBudget#used()} equals the number of real dispatches. An executor that is not {@link
+ * GateExecutor#billable() billable} (D-26) never touches the budget.
  *
  * <p>Before anything else the gate writes the traces of the run in {@code runDir} ({@link
  * #writeTraces}): {@value #SAMPLE}, {@value #PROFILE_A}, {@value #PROFILE_B}, {@value #VIEW} and
@@ -136,13 +139,13 @@ public final class Gate {
     RoundsParams rp = p.rounds();
     List<String> sampleIds = s.items().stream().map(SampleItem::activityId).distinct().toList();
     Set<String> offered = new LinkedHashSet<>(sampleIds);
-    if (!consume(budget, ROUND1.size())) {
+    if (!reserve(ex, budget, ROUND1.size())) {
       return unavailable(s, rp, sampleIds, List.of());
     }
     Map<Agent, Pick> picks =
         parse(
             ex.round1(runDir, ctx, s, p, EnumSet.copyOf(ROUND1)), ROUND1, offered, rp.pickCount());
-    List<Agent> retry = retryable(picks, budget);
+    List<Agent> retry = retryable(picks, ex, budget);
     if (!retry.isEmpty()) {
       Map<Agent, Optional<Envelope>> again = ex.round1(runDir, ctx, s, p, EnumSet.copyOf(retry));
       picks.putAll(parse(again, retry, offered, rp.pickCount()));
@@ -181,7 +184,7 @@ public final class Gate {
     List<String> shortlist = shortlist(r.round1(), f1);
     List<Pick> votes = List.of();
     List<String> current = f1;
-    if (rp.maxRounds() >= 2 && !shortlist.isEmpty() && consume(budget, PERSONAS.size())) {
+    if (rp.maxRounds() >= 2 && !shortlist.isEmpty() && reserve(ex, budget, PERSONAS.size())) {
       int voteK = Math.min(rp.voteCount(), shortlist.size());
       Map<Agent, Pick> v =
           parse(ex.round2(runDir, shortlist, p), PERSONAS, new LinkedHashSet<>(shortlist), voteK);
@@ -255,23 +258,17 @@ public final class Gate {
     return new ArrayList<>(out);
   }
 
-  private static List<Agent> retryable(Map<Agent, Pick> picks, CallBudget budget) {
-    List<Agent> out = new ArrayList<>();
-    for (Agent persona : PERSONAS) {
-      if (!picks.get(persona).ok() && budget.tryConsume()) {
-        out.add(persona);
-      }
+  private static List<Agent> retryable(Map<Agent, Pick> picks, GateExecutor ex, CallBudget budget) {
+    List<Agent> failed = PERSONAS.stream().filter(persona -> !picks.get(persona).ok()).toList();
+    if (failed.isEmpty() || !reserve(ex, budget, failed.size())) {
+      return List.of();
     }
-    return out;
+    return failed;
   }
 
-  private static boolean consume(CallBudget budget, int calls) {
-    for (int i = 0; i < calls; i++) {
-      if (!budget.tryConsume()) {
-        return false;
-      }
-    }
-    return true;
+  /** Reserves {@code calls} units at once (D-28); a non-billable executor needs none (D-26). */
+  private static boolean reserve(GateExecutor ex, CallBudget budget, int calls) {
+    return !ex.billable() || budget.tryConsume(calls);
   }
 
   private static List<String> top(List<String> ids, RoundsParams rp) {

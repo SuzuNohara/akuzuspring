@@ -79,6 +79,17 @@ public final class ReplayExecutor implements GateExecutor {
     return replay(2, EnumSet.of(Agent.A, Agent.B));
   }
 
+  /**
+   * A replay calls no agent, so it never consumes the call budget (D-26).
+   *
+   * @return {@code false}
+   * @implNote O(1) time and space.
+   */
+  @Override
+  public boolean billable() {
+    return false;
+  }
+
   private Map<Agent, Optional<Envelope>> replay(int round, Set<Agent> agents) throws AnnException {
     int attempt = attempts.merge(round, 1, Integer::sum);
     String suffix = attempt == 1 ? "" : "-" + attempt;

@@ -60,4 +60,16 @@ public interface GateExecutor {
    */
   Map<Agent, Optional<Envelope>> round2(Path runDir, List<String> shortlist, Params p)
       throws AnnException;
+
+  /**
+   * Tells whether the dispatches of this executor are real agent calls that consume the {@code
+   * CallBudget} (D-26). Executors that call no agent (the bench oracle, the replay) return {@code
+   * false} and the gate then reserves nothing.
+   *
+   * @return {@code true} by default
+   * @implNote O(1) time and space.
+   */
+  default boolean billable() {
+    return true;
+  }
 }

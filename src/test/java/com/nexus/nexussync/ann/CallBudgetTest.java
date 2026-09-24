@@ -27,6 +27,29 @@ class CallBudgetTest {
     assertThat(budget.used()).isZero();
   }
 
+  // D-28
+  @Test
+  void given_budgetOfFive_when_reservingThreeThenThree_then_secondRefusedAndNothingConsumed() {
+    CallBudget budget = new CallBudget(5);
+
+    assertThat(budget.tryConsume(3)).isTrue();
+    assertThat(budget.tryConsume(3)).isFalse();
+    assertThat(budget.used()).isEqualTo(3);
+    assertThat(budget.tryConsume(2)).isTrue();
+    assertThat(budget.used()).isEqualTo(5);
+    assertThat(budget.tryConsume(0)).isTrue();
+    assertThat(budget.tryConsume(1)).isFalse();
+  }
+
+  // D-28
+  @Test
+  void given_negativeReservation_when_tryConsume_then_illegalArgument() {
+    CallBudget budget = new CallBudget(5);
+
+    assertThatThrownBy(() -> budget.tryConsume(-1)).isInstanceOf(IllegalArgumentException.class);
+    assertThat(budget.used()).isZero();
+  }
+
   @Test
   void givenNegativeMax_whenCreating_thenIllegalArgument() {
     assertThatThrownBy(() -> new CallBudget(-1)).isInstanceOf(IllegalArgumentException.class);

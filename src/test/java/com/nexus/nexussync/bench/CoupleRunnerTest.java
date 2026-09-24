@@ -9,19 +9,30 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nexus.nexussync.NexussyncException;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
+import com.nexus.nexussync.ann.Envelope;
 import com.nexus.nexussync.ann.RunLock;
 import com.nexus.nexussync.catalog.Catalog;
+import com.nexus.nexussync.context.Context;
 import com.nexus.nexussync.decision.Decision;
 import com.nexus.nexussync.params.Params;
+import com.nexus.nexussync.rounds.Agent;
 import com.nexus.nexussync.rounds.Closure;
 import com.nexus.nexussync.rounds.FakeGateExecutor;
+import com.nexus.nexussync.rounds.GateExecutor;
+import com.nexus.nexussync.sampler.Sample;
 import com.nexus.nexussync.sampler.SampleStatus;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Random;
+import java.util.Set;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -102,14 +113,17 @@ class CoupleRunnerTest {
     assertThat(rs.get(0).evidence().intersectionF1()).isEqualTo(params.rounds().pickCount());
   }
 
-  // U11-02
+  // U11-02 (completo: todos los ficheros de la corrida; con el reloj de prueba incluso
+  // record.json, cuyo elapsed y runId dependen del reloj, es determinista)
   @Test
-  void given_sameParamsAndSeed_when_runTwice_then_paramsSampleAndDecisionIdentical(
-      @TempDir Path out2) throws Exception {
+  void given_sameParamsAndSeed_when_runTwice_then_everyRunFileIdentical(@TempDir Path out2)
+      throws Exception {
     RunRecord first = run(BenchFixtures.couple(nx, "opuestos"), out, 1, echo()).get(0);
     RunRecord second = run(BenchFixtures.couple(nx, "opuestos"), out2, 1, echo()).get(0);
 
-    for (String name : List.of("params.yml", "sample.json", "decision.json")) {
+    List<String> names = fileNames(runDir(out, first));
+    assertThat(names).containsAll(TEN_FILES).isEqualTo(fileNames(runDir(out2, second)));
+    for (String name : names) {
       assertThat(Files.readAllBytes(runDir(out2, second).resolve(name)))
           .as(name)
           .isEqualTo(Files.readAllBytes(runDir(out, first).resolve(name)));
@@ -117,6 +131,91 @@ class CoupleRunnerTest {
     assertThat(Files.readString(runDir(out, first).resolve("params.yml")))
         .contains("experiment: \"baseline-haiku\"")
         .contains("n_sample: 40");
+  }
+
+  // D-27
+  @Test
+  void given_threeIterations_when_run_then_eachIterationOneWeekLaterAndHistoryDatedByIteration()
+      throws Exception {
+    List<RunRecord> rs = run(BenchFixtures.couple(nx, "opuestos"), out, 3, echo());
+
+    ObjectMapper json = new ObjectMapper();
+    List<JsonNode> contexts = new ArrayList<>();
+    for (RunRecord r : rs) {
+      contexts.add(json.readTree(runDir(out, r).resolve("context.json").toFile()));
+    }
+    LocalDate today = LocalDate.parse(contexts.get(0).path("today").asText());
+    assertThat(contexts)
+        .extracting(c -> LocalDate.parse(c.path("today").asText()))
+        .containsExactly(today, today.plusDays(7), today.plusDays(14));
+    int before = contexts.get(0).path("a").path("history").size();
+    JsonNode history = contexts.get(2).path("a").path("history");
+    List<LocalDate> added = new ArrayList<>();
+    for (int i = before; i < history.size(); i++) {
+      added.add(LocalDate.parse(history.get(i).path("date").asText()));
+    }
+    assertThat(added).isNotEmpty().isSortedAccordingTo(LocalDate::compareTo);
+    assertThat(added.stream().distinct()).containsExactly(today, today.plusDays(7));
+    assertThat(rs).allSatisfy(r -> assertThat(r.decision()).isPresent());
+  }
+
+  // D-30
+  @Test
+  void given_gateRunning_when_agentsCalled_then_noTruthNorContextInRunDir() throws Exception {
+    List<String> seen = new ArrayList<>();
+    GateExecutor spy = new TruthSpy(echo(), seen);
+
+    RunRecord r =
+        new CoupleRunner(BenchFixtures.ticking())
+            .run(
+                BenchFixtures.couple(nx, "opuestos"),
+                params,
+                catalog,
+                spy,
+                out,
+                1,
+                new Random(params.seed()),
+                new CallBudget(200))
+            .get(0);
+
+    assertThat(seen).isNotEmpty().allMatch("clean"::equals);
+    assertThat(Files.readString(runDir(out, r).resolve("context.json"))).contains("truth");
+    assertThat(r.evidence().calls()).isEqualTo(3);
+  }
+
+  /** Executor that inspects {@code runDir} every time an agent round is dispatched (D-30). */
+  private record TruthSpy(FakeGateExecutor delegate, List<String> seen) implements GateExecutor {
+
+    @Override
+    public Map<Agent, Optional<Envelope>> round1(
+        Path runDir, Context ctx, Sample s, Params p, Set<Agent> agents) throws AnnException {
+      seen.add(inspect(runDir));
+      return delegate.round1(runDir, ctx, s, p, agents);
+    }
+
+    @Override
+    public Map<Agent, Optional<Envelope>> round2(Path runDir, List<String> shortlist, Params p)
+        throws AnnException {
+      seen.add(inspect(runDir));
+      return delegate.round2(runDir, shortlist, p);
+    }
+
+    private static String inspect(Path runDir) {
+      if (Files.exists(runDir.resolve("context.json"))) {
+        return "context.json present";
+      }
+      try (Stream<Path> files = Files.walk(runDir)) {
+        for (Path f : files.filter(Files::isRegularFile).toList()) {
+          String text = Files.readString(f);
+          if (text.contains("truth_weights") || text.contains("truthWeights")) {
+            return "truth in " + f.getFileName();
+          }
+        }
+        return "clean";
+      } catch (IOException e) {
+        return "unreadable: " + e.getMessage();
+      }
+    }
   }
 
   // U11-01
@@ -218,6 +317,16 @@ class CoupleRunnerTest {
 
   private static Decision decision(String chosen, List<String> rankA, List<String> rankB) {
     return new Decision(chosen, Map.of(chosen, 1), rankA, rankB, false, List.of());
+  }
+
+  private static List<String> fileNames(Path dir) throws IOException {
+    try (Stream<Path> files = Files.walk(dir)) {
+      return files
+          .filter(Files::isRegularFile)
+          .map(f -> dir.relativize(f).toString())
+          .sorted()
+          .toList();
+    }
   }
 
   private static FakeGateExecutor echo() {

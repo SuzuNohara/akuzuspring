@@ -173,6 +173,20 @@ class MetricsTest {
     assertThat(m.get(Metrics.MEAN_SECONDS)).isEqualTo(3.0);
   }
 
+  // D-29
+  @Test
+  void given_okPickWithoutIds_when_of_then_excludedFromChosenInTop3() {
+    Map<Agent, Map<Feature, Double>> truth = new EnumMap<>(Agent.class);
+    truth.put(Agent.A, TRUTH);
+    Pick empty = new Pick(Agent.A, List.of(), List.of(), List.of(), PickStatus.OK);
+    RunRecord r =
+        closed(Closure.F3, List.of(empty), new RunRecord.Evidence(truth, 0, List.of(), 0, 0));
+
+    Map<String, Double> m = Metrics.of(List.of(r));
+
+    assertThat(m.get(Metrics.CHOSEN_TOP3)).isNaN();
+  }
+
   @Test
   void given_failedPersonaWithTruth_when_of_then_noPersonaInvocationCounted() {
     Map<Agent, Map<Feature, Double>> truth = new EnumMap<>(Agent.class);

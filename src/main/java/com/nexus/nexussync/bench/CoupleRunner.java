@@ -57,7 +57,14 @@ import org.slf4j.LoggerFactory;
  * extended history. The simulated rating of the chosen activity is {@value #RATING_BOTH} when it is
  * the truth top-1 of both persons, {@value #RATING_ONE} when of one and {@value #RATING_NONE}
  * otherwise; both profiles receive one history entry per final id (offered, chosen or not, rated
- * only when chosen) dated {@code today}, which stays the day of the couple file in every iteration.
+ * only when chosen) dated with the {@code today} of its iteration. Each iteration simulates one
+ * weekly date (D-27): iteration {@code i} runs with {@code today = couple today + 7·i}, so
+ * cooldown, novelty and the history window see the dates pass.
+ *
+ * <p>The hidden truth never reaches the agents (D-30): while the gate runs, {@code runDir} only
+ * holds {@value #PARAMS} and the traces the gate writes; {@value #CONTEXT}, which carries the
+ * {@code truthWeights} and the locations, is written after the gate has finished. The agent calls
+ * consumed by each gate are recorded in {@link RunRecord.Evidence#calls()}.
  *
  * <p>Each iteration writes {@code outDir/<experiment>/<coupleId>/<runId>/} with {@value #PARAMS},
  * {@value #CONTEXT}, {@code sample.json} (written by the gate), {@code round*.ann} and {@code
@@ -89,6 +96,9 @@ public final class CoupleRunner {
 
   /** Serialized {@link RunRecord}. */
   static final String RECORD = "record.json";
+
+  /** Days between two simulated dates (D-27). */
+  static final int DAYS_PER_ITERATION = 7;
 
   /** Directory of the learned weights under {@code outDir}. */
   static final String WEIGHTS_DIR = "weights";
@@ -166,7 +176,8 @@ public final class CoupleRunner {
       long lastMillis = Long.MIN_VALUE;
       for (int i = 0; i < roundsSim; i++) {
         long millis = Math.max(clock.millis(), lastMillis + 1);
-        Step step = iterate(a, b, couple.today(), millis, env);
+        LocalDate today = couple.today().plusDays((long) DAYS_PER_ITERATION * i);
+        Step step = iterate(a, b, today, millis, env);
         out.add(step.record());
         a = step.a();
         b = step.b();
@@ -186,7 +197,8 @@ public final class CoupleRunner {
     Map<Feature, Double> w =
         WeightUpdater.effective(before, ctx.ratedDatesCount(), p.learning(), p.sampler());
     Sample sample = Sampler.sample(ctx, env.cat(), w, p.sampler(), env.rng());
-    GateResult result = gate(sample, ctx, runDir, env);
+    Gated gated = gate(sample, ctx, runDir, env);
+    GateResult result = gated.result();
     Optional<Decision> decision = decide(result, ctx, env);
     Optional<PlaceAssignment> places = decision.map(d -> place(d.chosen(), ctx, env));
     OptionalInt rating = decision.map(CoupleRunner::rating).orElse(OptionalInt.empty());
@@ -205,13 +217,14 @@ public final class CoupleRunner {
             before,
             after,
             Duration.ofMillis(Math.max(0, clock.millis() - start)),
-            RunRecord.Evidence.of(ctx, result, places, env.cat(), p.rounds().intersection()));
-    writeOutcome(runDir, record);
+            RunRecord.Evidence.of(
+                ctx, result, places, env.cat(), p.rounds().intersection(), gated.calls()));
+    writeOutcome(runDir, ctx, record);
     Outcome o = new Outcome(result, decision, rating, today);
     return new Step(record, extend(a, o), extend(b, o));
   }
 
-  /** Names the run, creates its directory and writes the parameters and the context. */
+  /** Names the run, creates its directory and writes the parameters (never the context: D-30). */
   private static Path open(Context ctx, long millis, Env env) throws NexussyncException {
     Params p = env.p();
     if (!EXPERIMENT_DIR.matcher(p.experiment()).matches()) {
@@ -220,7 +233,6 @@ public final class CoupleRunner {
     String runId = RunIds.of(p.experiment(), ctx.coupleId(), millis, p.seed());
     Path runDir = env.outDir().resolve(p.experiment()).resolve(ctx.coupleId()).resolve(runId);
     BenchIo.write(BenchIo.CANONICAL_YAML, runDir.resolve(PARAMS), p);
-    BenchIo.write(BenchIo.JSON, runDir.resolve(CONTEXT), ctx);
     return runDir;
   }
 
@@ -236,14 +248,24 @@ public final class CoupleRunner {
     }
   }
 
-  private GateResult gate(Sample sample, Context ctx, Path runDir, Env env)
-      throws NexussyncException {
+  /** Runs the gate and counts the budget units it consumed. */
+  private Gated gate(Sample sample, Context ctx, Path runDir, Env env) throws NexussyncException {
     if (sample.items().isEmpty()) {
       BenchIo.write(BenchIo.JSON, runDir.resolve("sample.json"), Map.of("items", List.of()));
-      return new GateResult(
-          List.of(), Closure.AI_UNAVAILABLE, List.of(), List.of(), List.of(), Map.of(), Map.of());
+      return new Gated(
+          new GateResult(
+              List.of(),
+              Closure.AI_UNAVAILABLE,
+              List.of(),
+              List.of(),
+              List.of(),
+              Map.of(),
+              Map.of()),
+          0);
     }
-    return gate.run(sample, ctx, env.cat(), env.p(), env.ex(), runDir, env.budget());
+    int before = env.budget().used();
+    GateResult result = gate.run(sample, ctx, env.cat(), env.p(), env.ex(), runDir, env.budget());
+    return new Gated(result, env.budget().used() - before);
   }
 
   private static Optional<Decision> decide(GateResult result, Context ctx, Env env)
@@ -311,7 +333,10 @@ public final class CoupleRunner {
     return Optional.of(after);
   }
 
-  private static void writeOutcome(Path runDir, RunRecord r) throws NexussyncException {
+  /** Writes the outcome of a finished iteration; the context goes here, after the gate (D-30). */
+  private static void writeOutcome(Path runDir, Context ctx, RunRecord r)
+      throws NexussyncException {
+    BenchIo.write(BenchIo.JSON, runDir.resolve(CONTEXT), ctx);
     BenchIo.write(BenchIo.JSON, runDir.resolve(GATE), r.gate());
     BenchIo.write(BenchIo.JSON, runDir.resolve(DECISION), r.decision());
     BenchIo.write(BenchIo.JSON, runDir.resolve(PLACES), r.places());
@@ -319,7 +344,10 @@ public final class CoupleRunner {
     BenchIo.write(BenchIo.JSON, runDir.resolve(RECORD), r);
   }
 
-  /** Adds one entry per final id, dated {@code today}; unchanged without decision. */
+  /**
+   * Adds one entry per final id, dated the {@code today} of the iteration; unchanged without
+   * decision.
+   */
   private static Profile extend(Profile person, Outcome o) {
     if (o.decision().isEmpty()) {
       return person;
@@ -354,6 +382,9 @@ public final class CoupleRunner {
       return outDir.resolve(WEIGHTS_DIR);
     }
   }
+
+  /** Outcome of the gate and the budget units it consumed. */
+  private record Gated(GateResult result, int calls) {}
 
   /** Record of one iteration and the profiles with the extended history. */
   private record Step(RunRecord record, Profile a, Profile b) {}

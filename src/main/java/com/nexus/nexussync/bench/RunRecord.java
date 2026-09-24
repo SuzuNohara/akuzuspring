@@ -1,5 +1,6 @@
 package com.nexus.nexussync.bench;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.nexus.nexussync.catalog.Activity;
 import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.catalog.Place;
@@ -86,24 +87,48 @@ public record RunRecord(
    * @param finalTypes {@code activity_type} of every final id, in the order of the final list
    * @param hoursDeclared proposed places whose catalog entry has non-empty opening hours
    * @param hoursParsed among those, the places whose hours could be interpreted
+   * @param calls units of the {@code CallBudget} consumed by the gate of this run, i.e. real agent
+   *     dispatches (0 for non-billable executors, D-26)
    */
   public record Evidence(
       Map<Agent, Map<Feature, Double>> truthWeights,
       int intersectionF1,
       List<String> finalTypes,
       int hoursDeclared,
-      int hoursParsed) {
+      int hoursParsed,
+      int calls) {
 
     /**
      * Copies the collections so the record is immutable.
      *
      * @implNote O(a·f + n) time and space, a persons, f features, n final ids.
      */
+    @JsonCreator
     public Evidence {
       Map<Agent, Map<Feature, Double>> copy = new EnumMap<>(Agent.class);
       truthWeights.forEach((agent, w) -> copy.put(agent, Map.copyOf(w)));
       truthWeights = Collections.unmodifiableMap(copy);
       finalTypes = List.copyOf(finalTypes);
+    }
+
+    /**
+     * Creates evidence without agent calls recorded ({@code calls = 0}); kept for the callers that
+     * predate {@code callsPerRun}.
+     *
+     * @param truthWeights hidden weights of each person that has them
+     * @param intersectionF1 size of the round-one intersection
+     * @param finalTypes {@code activity_type} of every final id
+     * @param hoursDeclared proposed places with non-empty opening hours
+     * @param hoursParsed among those, the places whose hours could be interpreted
+     * @implNote O(a·f + n) time and space, a persons, f features, n final ids.
+     */
+    public Evidence(
+        Map<Agent, Map<Feature, Double>> truthWeights,
+        int intersectionF1,
+        List<String> finalTypes,
+        int hoursDeclared,
+        int hoursParsed) {
+      this(truthWeights, intersectionF1, finalTypes, hoursDeclared, hoursParsed, 0);
     }
 
     /**
@@ -114,7 +139,7 @@ public record RunRecord(
      * @param places places proposed for the chosen activity, if any
      * @param cat catalog of the run
      * @param mode intersection rule of round one
-     * @return the evidence
+     * @return the evidence, with {@code calls = 0}
      * @implNote O(n + k) time and space, n final ids, k picked ids and proposed places.
      */
     public static Evidence of(
@@ -123,6 +148,28 @@ public record RunRecord(
         Optional<PlaceAssignment> places,
         Catalog cat,
         Intersection mode) {
+      return of(ctx, gate, places, cat, mode, 0);
+    }
+
+    /**
+     * Gathers the evidence of a finished run, with the agent calls its gate consumed.
+     *
+     * @param ctx context of the couple
+     * @param gate outcome of the gate
+     * @param places places proposed for the chosen activity, if any
+     * @param cat catalog of the run
+     * @param mode intersection rule of round one
+     * @param calls units of the call budget consumed by the gate of this run
+     * @return the evidence
+     * @implNote O(n + k) time and space, n final ids, k picked ids and proposed places.
+     */
+    public static Evidence of(
+        Context ctx,
+        GateResult gate,
+        Optional<PlaceAssignment> places,
+        Catalog cat,
+        Intersection mode,
+        int calls) {
       Map<Agent, Map<Feature, Double>> truth = new EnumMap<>(Agent.class);
       truth(ctx.a()).ifPresent(w -> truth.put(Agent.A, w));
       truth(ctx.b()).ifPresent(w -> truth.put(Agent.B, w));
@@ -140,7 +187,8 @@ public record RunRecord(
           parsed += o.hoursUnknown() ? 0 : 1;
         }
       }
-      return new Evidence(truth, intersectionF1(gate.round1(), mode), types, declared, parsed);
+      return new Evidence(
+          truth, intersectionF1(gate.round1(), mode), types, declared, parsed, calls);
     }
 
     private static Optional<Map<Feature, Double>> truth(Profile p) {

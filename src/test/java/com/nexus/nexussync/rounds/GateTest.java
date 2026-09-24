@@ -8,6 +8,10 @@ import static org.assertj.core.api.Assertions.entry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
+import com.nexus.nexussync.catalog.Activity;
+import com.nexus.nexussync.catalog.Catalog;
+import com.nexus.nexussync.catalog.Daypart;
+import com.nexus.nexussync.catalog.LocationScope;
 import com.nexus.nexussync.context.Climate;
 import com.nexus.nexussync.context.Constraints;
 import com.nexus.nexussync.context.Context;
@@ -43,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -310,7 +315,87 @@ class GateTest {
     assertThat(r.closure()).isEqualTo(Closure.F1);
     assertThat(r.finalIds()).containsExactly("s03", "s01", "s02", "s05", "s04");
     assertThat(ex.round1Calls()).isEqualTo(2);
+    assertThat(ex.round1Agents())
+        .containsExactly(Set.of(Agent.A, Agent.B, Agent.M), Set.of(Agent.A));
     assertThat(budget.used()).isEqualTo(4);
+  }
+
+  // D-24
+  @Test
+  void given_bothPersonasFailOnce_when_run_then_retryAsksBothAndKeepsFirstMediator()
+      throws AnnException {
+    FakeGateExecutor ex = f1Setup().failTimes(Agent.A, 1).failTimes(Agent.B, 1);
+    CallBudget budget = new CallBudget(200);
+
+    GateResult r = run(ex, rounds(), budget);
+
+    assertThat(ex.round1Agents())
+        .containsExactly(Set.of(Agent.A, Agent.B, Agent.M), Set.of(Agent.A, Agent.B));
+    assertThat(budget.used()).isEqualTo(5);
+    assertThat(r.closure()).isEqualTo(Closure.F1);
+    assertThat(r.round1().get(2).status()).isEqualTo(PickStatus.OK);
+    assertThat(runDir.resolve("round1-2.ann")).content().doesNotContain("--id=m");
+  }
+
+  // D-22
+  @Test
+  @SuppressWarnings("unchecked")
+  void given_catalog_when_run_then_sampleDescribesActivitiesWithoutFeaturesNorScore()
+      throws AnnException, IOException {
+    Catalog cat = new Catalog(Map.of("s01", activity("s01")), Map.of(), Map.of());
+
+    gate.run(sample(), CTX, cat, params(rounds()), f1Setup(), runDir, new CallBudget(200));
+
+    Map<String, Object> json =
+        new ObjectMapper().readValue(runDir.resolve(Gate.SAMPLE).toFile(), Map.class);
+    List<Map<String, Object>> items = (List<Map<String, Object>>) json.get("items");
+    Map<String, Object> described = items.get(9);
+    assertThat(described)
+        .containsOnlyKeys(
+            "activity_id",
+            "title",
+            "activity_type",
+            "location_scope",
+            "interests",
+            "dayparts",
+            "duration_avg",
+            "cost_mxn_pp",
+            "price_band",
+            "outdoor",
+            "ambience",
+            "description")
+        .containsEntry("title", "Titulo s01")
+        .containsEntry("interests", List.of("arte", "museos"))
+        .containsEntry("dayparts", List.of("AFTERNOON", "MORNING"))
+        .containsEntry("cost_mxn_pp", 150);
+    assertThat(items.get(0)).containsOnlyKeys("activity_id", "features");
+    assertThat(Files.readString(runDir.resolve(Gate.SAMPLE), StandardCharsets.UTF_8))
+        .doesNotContain("score");
+  }
+
+  private static Activity activity(String id) {
+    return new Activity(
+        id,
+        "Titulo " + id,
+        "MUSEUM",
+        LocationScope.CITY,
+        Set.of("MUSEUM"),
+        Set.of("museos", "arte"),
+        Set.of(Daypart.MORNING, Daypart.AFTERNOON),
+        Set.of("ANY"),
+        60,
+        90,
+        120,
+        1,
+        2,
+        5,
+        1,
+        150,
+        "LOW",
+        false,
+        Set.of("ANY"),
+        Set.of("QUIET", "CULTURAL"),
+        "Una visita");
   }
 
   // U7-10

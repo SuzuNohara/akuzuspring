@@ -6,6 +6,8 @@ import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
 import com.nexus.nexussync.ann.Envelope;
 import com.nexus.nexussync.ann.RubricRenderer;
+import com.nexus.nexussync.catalog.Activity;
+import com.nexus.nexussync.catalog.Catalog;
 import com.nexus.nexussync.context.Constraints;
 import com.nexus.nexussync.context.Context;
 import com.nexus.nexussync.context.EmotionEntry;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -29,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Two-round gate between the sample and the couple's decision (unit U7).
@@ -44,7 +48,9 @@ import java.util.TreeMap;
  * finalSize} of the sample by score.
  *
  * <p>Every agent call, retries included, consumes one unit of the {@link CallBudget}; if a unit
- * cannot be obtained the executor is not called.
+ * cannot be obtained the executor is not called. The retry dispatches only the failed personas
+ * (D-24) and its answers are merged with those of the first attempt, so {@link CallBudget#used()}
+ * equals the number of real dispatches.
  *
  * <p>Before anything else the gate writes the traces of the run in {@code runDir} ({@link
  * #writeTraces}): {@value #SAMPLE}, {@value #PROFILE_A}, {@value #PROFILE_B}, {@value #VIEW} and
@@ -53,7 +59,10 @@ import java.util.TreeMap;
  */
 public final class Gate {
 
-  /** Sample offered to the agents: {@code activity_id} and features per item. */
+  /**
+   * Sample offered to the agents: {@code {"items": [...]}} with the catalog description of every
+   * item (D-22), or {@code activity_id} and features when the catalog lacks the activity.
+   */
   static final String SAMPLE = "sample.json";
 
   /** Profile of person A as the persona agent sees it. */
@@ -72,6 +81,7 @@ public final class Gate {
       new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
   private static final List<Agent> ROUND1 = List.of(Agent.A, Agent.B, Agent.M);
+  private static final Catalog NO_CATALOG = new Catalog(Map.of(), Map.of(), Map.of());
   private static final List<Agent> PERSONAS = List.of(Agent.A, Agent.B);
 
   /**
@@ -84,7 +94,9 @@ public final class Gate {
   }
 
   /**
-   * Runs the gate over a sample.
+   * Runs the gate over a sample without catalog: {@code sample.json} carries ids and features only.
+   * Delegates to {@link #run(Sample, Context, Catalog, Params, GateExecutor, Path, CallBudget)}
+   * with an empty catalog.
    *
    * @param s sample offered to the agents
    * @param ctx couple context, handed to the executor
@@ -99,17 +111,41 @@ public final class Gate {
   public GateResult run(
       Sample s, Context ctx, Params p, GateExecutor ex, Path runDir, CallBudget budget)
       throws AnnException {
-    writeTraces(runDir, ctx, s, p);
+    return run(s, ctx, NO_CATALOG, p, ex, runDir, budget);
+  }
+
+  /**
+   * Runs the gate over a sample, describing every sampled activity from the catalog in {@code
+   * sample.json} (D-22).
+   *
+   * @param s sample offered to the agents
+   * @param ctx couple context, handed to the executor
+   * @param cat catalog holding the sampled activities
+   * @param p parameters of the experiment (the gate reads {@link Params#rounds()})
+   * @param ex executor of the agent rounds
+   * @param runDir directory of the run: receives the traces and is handed to the executor
+   * @param budget call budget shared by the whole run
+   * @return the final list, its closure and the parsed picks
+   * @throws AnnException {@code RENDER} if a trace cannot be written; any error of the executor
+   * @implNote O(n log n) time and O(n) space in the sample size, plus at most five agent calls.
+   */
+  public GateResult run(
+      Sample s, Context ctx, Catalog cat, Params p, GateExecutor ex, Path runDir, CallBudget budget)
+      throws AnnException {
+    writeTraces(runDir, ctx, s, cat, p);
     RoundsParams rp = p.rounds();
     List<String> sampleIds = s.items().stream().map(SampleItem::activityId).distinct().toList();
     Set<String> offered = new LinkedHashSet<>(sampleIds);
     if (!consume(budget, ROUND1.size())) {
       return unavailable(s, rp, sampleIds, List.of());
     }
-    Map<Agent, Pick> picks = parse(ex.round1(runDir, ctx, s, p), ROUND1, offered, rp.pickCount());
+    Map<Agent, Pick> picks =
+        parse(
+            ex.round1(runDir, ctx, s, p, EnumSet.copyOf(ROUND1)), ROUND1, offered, rp.pickCount());
     List<Agent> retry = retryable(picks, budget);
     if (!retry.isEmpty()) {
-      picks.putAll(parse(ex.round1(runDir, ctx, s, p), retry, offered, rp.pickCount()));
+      Map<Agent, Optional<Envelope>> again = ex.round1(runDir, ctx, s, p, EnumSet.copyOf(retry));
+      picks.putAll(parse(again, retry, offered, rp.pickCount()));
     }
     List<Pick> round1 = ROUND1.stream().map(picks::get).toList();
     Pick a = picks.get(Agent.A);
@@ -257,7 +293,24 @@ public final class Gate {
    * @implNote O(n + h + r) time and space, n sample items, h history entries, r rubric entries.
    */
   static void writeTraces(Path runDir, Context ctx, Sample s, Params p) throws AnnException {
-    json(runDir.resolve(SAMPLE), sampleView(s));
+    writeTraces(runDir, ctx, s, NO_CATALOG, p);
+  }
+
+  /**
+   * Writes the five traces like {@link #writeTraces(Path, Context, Sample, Params)}, with {@code
+   * sample.json} describing each item from {@code cat} (D-22).
+   *
+   * @param runDir directory of the run, created if missing
+   * @param ctx couple context
+   * @param s sample offered to the agents
+   * @param cat catalog holding the sampled activities; an absent activity keeps ids and features
+   * @param p parameters of the experiment
+   * @throws AnnException {@code RENDER} if a file cannot be written
+   * @implNote O(n + h + r) time and space, n sample items, h history entries, r rubric entries.
+   */
+  static void writeTraces(Path runDir, Context ctx, Sample s, Catalog cat, Params p)
+      throws AnnException {
+    json(runDir.resolve(SAMPLE), sampleView(s, cat));
     json(runDir.resolve(PROFILE_A), profileView(ctx.a()));
     json(runDir.resolve(PROFILE_B), profileView(ctx.b()));
     json(runDir.resolve(VIEW), MediatorView.of(ctx, p));
@@ -269,17 +322,40 @@ public final class Gate {
     }
   }
 
-  private static Map<String, Object> sampleView(Sample s) {
+  private static Map<String, Object> sampleView(Sample s, Catalog cat) {
     List<Map<String, Object>> items = new ArrayList<>();
     for (SampleItem item : s.items()) {
-      Map<String, Object> m = new LinkedHashMap<>();
-      m.put("activity_id", item.activityId());
-      m.put("features", new TreeMap<>(item.features()));
-      items.add(m);
+      Activity a = cat.activities().get(item.activityId());
+      if (a == null) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("activity_id", item.activityId());
+        m.put("features", new TreeMap<>(item.features()));
+        items.add(m);
+      } else {
+        items.add(activityView(a));
+      }
     }
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("items", items);
     return out;
+  }
+
+  /** Catalog description of an activity, without features nor score (no ranking bias). */
+  private static Map<String, Object> activityView(Activity a) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("activity_id", a.activityId());
+    m.put("title", a.title());
+    m.put("activity_type", a.activityType());
+    m.put("location_scope", a.locationScope().name());
+    m.put("interests", new TreeSet<>(a.interests()));
+    m.put("dayparts", a.dayparts().stream().map(Enum::name).sorted().toList());
+    m.put("duration_avg", a.durationAvg());
+    m.put("cost_mxn_pp", a.costMxnPp());
+    m.put("price_band", a.priceBand());
+    m.put("outdoor", a.outdoor());
+    m.put("ambience", new TreeSet<>(a.ambience()));
+    m.put("description", a.description());
+    return m;
   }
 
   private static Map<String, Object> profileView(Profile person) {

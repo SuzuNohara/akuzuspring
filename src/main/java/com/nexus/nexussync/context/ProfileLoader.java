@@ -52,7 +52,7 @@ public final class ProfileLoader {
    * @param b second person
    * @param today reference day of the couple
    */
-  record CoupleFile(Profile a, Profile b, LocalDate today) {}
+  public record CoupleFile(Profile a, Profile b, LocalDate today) {}
 
   /**
    * Loads one profile.
@@ -75,7 +75,7 @@ public final class ProfileLoader {
    * @throws ContextException if a profile is invalid or {@code today} is missing
    * @implNote O(n) time and space in the size of the file.
    */
-  static CoupleFile loadCouple(Path json) throws ContextException {
+  public static CoupleFile loadCouple(Path json) throws ContextException {
     CoupleJson couple = read(json, CoupleJson.class);
     Profile a = toProfile(couple.a(), "a");
     Profile b = toProfile(couple.b(), "b");

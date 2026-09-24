@@ -54,7 +54,7 @@ public final class WeightStore {
    * @param paramsHash hash of the current parameter set
    * @param dir the weights directory
    * @return the latest weights, or empty if there is none, the directory does not exist or the hash
-   *     differs
+   *     differs (a file without {@code paramsHash} counts as a different hash, D-25)
    * @throws IOException if the directory or the file cannot be read or parsed
    * @throws IllegalArgumentException if the couple id is not a plain slug
    * @implNote O(n + f) time, n = files in {@code dir}, f = features; O(f) space.
@@ -71,7 +71,7 @@ public final class WeightStore {
     }
     Path file = dir.resolve(fileName(coupleId, latest.getAsInt()));
     Weights stored = YAML.readValue(file.toFile(), Weights.class);
-    if (!sameHash(stored.paramsHash(), paramsHash)) {
+    if (stored.paramsHash() == null || !sameHash(stored.paramsHash(), paramsHash)) {
       LOG.warn(
           "pesos de {} descartados: paramsHash guardado {} ≠ actual {}; arranque en frío",
           coupleId,

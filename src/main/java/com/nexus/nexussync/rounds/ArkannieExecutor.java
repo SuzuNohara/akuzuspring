@@ -12,17 +12,22 @@ import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.params.RuntimeParams;
 import com.nexus.nexussync.sampler.Sample;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +47,12 @@ import org.slf4j.LoggerFactory;
  * {@code Optional.empty()} and the gate applies its degradation rules. {@code LOCKED} and {@code
  * AGENTS} are not degradations but misconfigurations of the home, so they propagate, as do errors
  * rendering the program or writing the traces.
+ *
+ * <p>Round one can be asked for a subset of the agents (D-24, the gate's retry of a failed
+ * persona): the rendered program keeps only the dispatch lines whose {@code --id=} names a
+ * requested agent, so no other agent is called again. The traces are written only when {@code
+ * runDir} has no {@code sample.json} yet, so the richer traces written by {@link Gate} (D-22) are
+ * never overwritten.
  */
 public final class ArkannieExecutor implements GateExecutor {
 
@@ -56,8 +67,8 @@ public final class ArkannieExecutor implements GateExecutor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ArkannieExecutor.class);
   private static final ObjectMapper JSON = new ObjectMapper();
-  private static final List<Agent> ROUND1 = List.of(Agent.A, Agent.B, Agent.M);
   private static final List<Agent> ROUND2 = List.of(Agent.A, Agent.B);
+  private static final Pattern DISPATCH_ID = Pattern.compile("^\\s*\\[.*?--id=([abm])\\b");
   private static final String OUTPUT_DIR = ".output";
   private static final String MD = ".md";
   private static final String ANN = ".ann";
@@ -79,22 +90,24 @@ public final class ArkannieExecutor implements GateExecutor {
   }
 
   /**
-   * Writes the traces, renders and runs {@code round1.ann}: both personas pick and the mediator
-   * recommends, {@code k = rounds.pickCount}.
+   * Writes the traces if missing, renders and runs {@code round1.ann} with the dispatches of {@code
+   * agents} only: the personas pick and the mediator recommends, {@code k = rounds.pickCount}.
    *
-   * @implNote O(n) time and space in the sample and output sizes, plus one arkannie run.
+   * @implNote O(n) time and space in the sample, program and output sizes, plus one arkannie run.
    */
   @Override
-  public Map<Agent, Optional<Envelope>> round1(Path runDir, Context ctx, Sample s, Params p)
-      throws AnnException {
-    Gate.writeTraces(runDir, ctx, s, p);
+  public Map<Agent, Optional<Envelope>> round1(
+      Path runDir, Context ctx, Sample s, Params p, Set<Agent> agents) throws AnnException {
+    if (!Files.isRegularFile(runDir.resolve(Gate.SAMPLE))) {
+      Gate.writeTraces(runDir, ctx, s, p);
+    }
     Path dir = runDir.toAbsolutePath();
     Map<String, String> values = profiles(dir);
     values.put("sample", dir.resolve(Gate.SAMPLE).toString());
     values.put("view", dir.resolve(Gate.VIEW).toString());
     values.put("rubric", dir.resolve(Gate.RUBRIC).toString());
     values.put("k_pick", Integer.toString(p.rounds().pickCount()));
-    return round(dir, 1, values, p, ROUND1);
+    return round(dir, 1, values, p, agents);
   }
 
   /**
@@ -112,16 +125,17 @@ public final class ArkannieExecutor implements GateExecutor {
     Map<String, String> values = profiles(dir);
     values.put("shortlist", dir.resolve(SHORTLIST).toString());
     values.put("k_vote", Integer.toString(Math.min(p.rounds().voteCount(), shortlist.size())));
-    return round(dir, 2, values, p, ROUND2);
+    return round(dir, 2, values, p, EnumSet.copyOf(ROUND2));
   }
 
   private Map<Agent, Optional<Envelope>> round(
-      Path dir, int round, Map<String, String> values, Params p, List<Agent> agents)
+      Path dir, int round, Map<String, String> values, Params p, Set<Agent> agents)
       throws AnnException {
     String suffix = attemptSuffix(dir, round);
     String name = "round" + round;
     Path template = nexussyncDir.resolve(ANN_DIR).resolve(name + ".ann.tmpl");
     Path program = ProgramRenderer.render(template, values, dir.resolve(name + suffix + ANN));
+    keepDispatches(program, agents);
     String runId = dir.getFileName() + "-r" + round + suffix;
     Optional<RunOutput> out = launch(program, runId, p);
     copyOutput(runId, dir.resolve(name + suffix + ".out" + MD));
@@ -131,6 +145,32 @@ public final class ArkannieExecutor implements GateExecutor {
       result.put(agent, out.map(o -> o.envelopes().get(id)));
     }
     return result;
+  }
+
+  /**
+   * Removes from the rendered program every dispatch line whose {@code --id=} ({@code a}, {@code b}
+   * or {@code m}) is not in {@code agents}; any other line is kept.
+   *
+   * @param program rendered program, rewritten in place when a line is removed
+   * @param agents agents whose dispatches stay
+   * @throws AnnException {@code RENDER} if the program cannot be read or rewritten
+   * @implNote O(n) time and space in the size of the program.
+   */
+  static void keepDispatches(Path program, Set<Agent> agents) throws AnnException {
+    try {
+      List<String> lines = Files.readAllLines(program, StandardCharsets.UTF_8);
+      List<String> kept = lines.stream().filter(line -> keeps(line, agents)).toList();
+      if (kept.size() != lines.size()) {
+        Files.write(program, kept, StandardCharsets.UTF_8);
+      }
+    } catch (IOException e) {
+      throw new AnnException(AnnException.Kind.RENDER, "cannot filter " + program, e);
+    }
+  }
+
+  private static boolean keeps(String line, Set<Agent> agents) {
+    Matcher m = DISPATCH_ID.matcher(line);
+    return !m.find() || agents.contains(Agent.valueOf(m.group(1).toUpperCase(Locale.ROOT)));
   }
 
   private Optional<RunOutput> launch(Path program, String runId, Params p) throws AnnException {

@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,12 +33,28 @@ class ArkannieExecutorTest {
   private static final String ROUND1_TMPL =
       "# ann v0.3\n"
           + "// test template\n"
-          + "[persona] --pick --id=a : profile=\"{{profile_a}}\" other=\"{{profile_b}}\""
-          + " sample=\"{{sample}}\" view=\"{{view}}\" rubric=\"{{rubric}}\" k=\"{{k_pick}}\"\n";
+          + "parallel {\n"
+          + "  [persona] --pick --id=a --profile=\"{{profile_a}}\" --sample=\"{{sample}}\""
+          + " --k={{k_pick}}\n"
+          + "  [persona] --pick --id=b --profile=\"{{profile_b}}\" --sample=\"{{sample}}\""
+          + " --k={{k_pick}}\n"
+          + "  [mediador] --recommend --id=m --view=\"{{view}}\" --sample=\"{{sample}}\""
+          + " --rubric=\"{{rubric}}\" --k={{k_pick}}\n"
+          + "}\n"
+          + "  each -> {\n"
+          + "    [return] --id=r $result\n"
+          + "  }\n";
   private static final String ROUND2_TMPL =
       "# ann v0.3\n"
-          + "[persona] --vote --id=a : profile=\"{{profile_a}}\" other=\"{{profile_b}}\""
-          + " shortlist=\"{{shortlist}}\" k=\"{{k_vote}}\"\n";
+          + "parallel {\n"
+          + "  [persona] --vote --id=a --profile=\"{{profile_a}}\" --shortlist=\"{{shortlist}}\""
+          + " --k={{k_vote}}\n"
+          + "  [persona] --vote --id=b --profile=\"{{profile_b}}\" --shortlist=\"{{shortlist}}\""
+          + " --k={{k_vote}}\n"
+          + "}\n"
+          + "  each -> {\n"
+          + "    [return] --id=r $result\n"
+          + "  }\n";
 
   @TempDir Path home;
 
@@ -98,7 +115,8 @@ class ArkannieExecutorTest {
     assertThat(Files.readString(program, StandardCharsets.UTF_8))
         .contains("profile=\"" + runDir.toAbsolutePath().resolve(Gate.PROFILE_A) + "\"")
         .contains("view=\"" + runDir.toAbsolutePath().resolve(Gate.VIEW) + "\"")
-        .contains("k=\"5\"")
+        .contains("--k=5")
+        .contains("--id=m")
         .doesNotContain("{{");
   }
 
@@ -137,7 +155,7 @@ class ArkannieExecutorTest {
             .readValue(runDir.resolve(ArkannieExecutor.SHORTLIST).toFile(), Map.class);
     assertThat(shortlist.get("shortlist")).isEqualTo(List.of("x", "y"));
     assertThat(Files.readString(runDir.resolve("round2.ann"), StandardCharsets.UTF_8))
-        .contains("k=\"2\"")
+        .contains("--k=2")
         .contains("shortlist=\"" + runDir.toAbsolutePath().resolve(ArkannieExecutor.SHORTLIST));
   }
 
@@ -185,6 +203,39 @@ class ArkannieExecutorTest {
     assertThat(launcher.launches()).isEqualTo(3);
     assertThat(runDir.resolve("round1-2.ann")).isRegularFile();
     assertThat(runDir.resolve("round1-3.ann")).isRegularFile();
+  }
+
+  // D-24
+  @Test
+  void given_retryOfOnePersona_when_round1_then_programOnlyDispatchesThatPersona()
+      throws Exception {
+    FakeLauncher launcher = launcherCopying("ok.md", RUN + "-r1");
+    ArkannieExecutor ex = executor(launcher);
+    round1(ex);
+
+    Map<Agent, Optional<Envelope>> retry =
+        ex.round1(runDir, GateTest.context(), GateTest.sample(), params, EnumSet.of(Agent.B));
+
+    assertThat(retry).containsOnlyKeys(Agent.B);
+    String program = Files.readString(runDir.resolve("round1-2.ann"), StandardCharsets.UTF_8);
+    assertThat(program)
+        .contains("[persona] --pick --id=b")
+        .contains("[return] --id=r $result")
+        .doesNotContain("--id=a")
+        .doesNotContain("--id=m");
+    assertThat(Files.readString(runDir.resolve("round1.ann"), StandardCharsets.UTF_8))
+        .contains("--id=a", "--id=b", "--id=m");
+  }
+
+  // D-22
+  @Test
+  void given_tracesAlreadyWritten_when_round1_then_sampleNotOverwritten() throws Exception {
+    Files.createDirectories(runDir);
+    Files.writeString(runDir.resolve(Gate.SAMPLE), "{\"items\":[]}", StandardCharsets.UTF_8);
+
+    round1(executor(new FakeLauncher()));
+
+    assertThat(runDir.resolve(Gate.SAMPLE)).hasContent("{\"items\":[]}");
   }
 
   // U7-16

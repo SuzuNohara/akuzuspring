@@ -6,15 +6,18 @@ import com.nexus.nexussync.context.Context;
 import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.sampler.Sample;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** Dispatches the agents of each round of the gate (unit U7). */
 public interface GateExecutor {
 
   /**
-   * Runs round one: both personas pick and the mediator recommends.
+   * Runs round one for every agent: both personas pick and the mediator recommends. Delegates to
+   * {@link #round1(Path, Context, Sample, Params, Set)} with all the agents.
    *
    * @param runDir directory of the run
    * @param ctx couple context
@@ -24,8 +27,26 @@ public interface GateExecutor {
    * @throws AnnException if the program could not be rendered, launched or read
    * @implNote Cost dominated by the agent calls.
    */
-  Map<Agent, Optional<Envelope>> round1(Path runDir, Context ctx, Sample s, Params p)
-      throws AnnException;
+  default Map<Agent, Optional<Envelope>> round1(Path runDir, Context ctx, Sample s, Params p)
+      throws AnnException {
+    return round1(runDir, ctx, s, p, EnumSet.allOf(Agent.class));
+  }
+
+  /**
+   * Runs round one only for the given agents (D-24): the gate's retry asks for the failed personas
+   * alone, so no other agent is dispatched again.
+   *
+   * @param runDir directory of the run
+   * @param ctx couple context
+   * @param s sample offered to the agents
+   * @param p parameters of the experiment
+   * @param agents dispatches to run ({@code A}, {@code B}, {@code M}); the others are not called
+   * @return one entry per requested agent; {@code Optional.empty()} when it produced no envelope
+   * @throws AnnException if the program could not be rendered, launched or read
+   * @implNote Cost dominated by the agent calls: one per requested agent.
+   */
+  Map<Agent, Optional<Envelope>> round1(
+      Path runDir, Context ctx, Sample s, Params p, Set<Agent> agents) throws AnnException;
 
   /**
    * Runs round two: both personas vote over the shortlist.

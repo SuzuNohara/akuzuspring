@@ -58,6 +58,18 @@ final class WeightStoreTest {
     assertThat(WeightStore.load("4-8", "ffff0000", tmp)).isEmpty();
   }
 
+  // D-25
+  @Test
+  void given_fileWithoutParamsHash_when_load_then_emptyColdStart(@TempDir Path tmp)
+      throws Exception {
+    Files.writeString(
+        tmp.resolve("4-8.v1.yml"),
+        "coupleId: \"4-8\"\nw:\n  INTEREST: 1.0\nchoiceCount: 1\nversion: 1\n",
+        StandardCharsets.UTF_8);
+
+    assertThat(WeightStore.load("4-8", HASH, tmp)).isEmpty();
+  }
+
   // U10-06
   @Test
   void given_emptyOrMissingDirectory_when_load_then_empty(@TempDir Path tmp) throws Exception {

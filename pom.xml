@@ -49,6 +49,21 @@
                     -> 0.0762 con nexus-SCHEMA-01: AvailabilityControllerTest recorre
                        saveUserSchedule (guarda de dia repetido) y los *IT de repositorio. -->
         <jacoco.bundle.line.min>0.0762</jacoco.bundle.line.min>
+
+        <!-- nexus-NEXUSSYNC-01: el paquete com.nexus.nexussync (pipeline de sugerencias, Java puro sin
+             Spring) trae sus propias puertas ACOTADAS AL PAQUETE: fmt, checkstyle, spotbugs+findsecbugs y
+             un lint -Xlint:all -Werror (LintTest). El resto del backend no cambia de reglas.
+             - nexussync.excludedGroups: los tests @Tag("arkannie") llaman a claude via arkannie; fuera de
+               `test`/`verify` salvo -Dnexussync.excludedGroups=none.
+             - nexussync.dir: raiz de datos/agentes (NEXUSPROJECT/nexussync). Los tests que la necesitan
+               se saltan (Assumptions) si no existe. -->
+        <nexussync.excludedGroups>arkannie</nexussync.excludedGroups>
+        <nexussync.dir>${project.basedir}/../nexussync</nexussync.dir>
+        <fmt-maven-plugin.version>2.24</fmt-maven-plugin.version>
+        <maven-checkstyle-plugin.version>3.4.0</maven-checkstyle-plugin.version>
+        <spotbugs-maven-plugin.version>4.8.6.6</spotbugs-maven-plugin.version>
+        <findsecbugs-plugin.version>1.13.0</findsecbugs-plugin.version>
+        <dependency-check-maven.version>10.0.3</dependency-check-maven.version>
     </properties>
     
     <dependencies>
@@ -123,6 +138,19 @@
             <optional>true</optional>
         </dependency>
         
+        <!-- nexus-NEXUSSYNC-01: CSV de kb/ (RFC 4180) y YAML de params/. commons-csv no lo gestiona el BOM
+             de Boot (version explicita); jackson-dataformat-yaml si (sin version). databind y jsr310 ya
+             vienen con spring-boot-starter-web. -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+
         <!-- Spring Boot Starter Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -204,6 +232,11 @@
                     <argLine>@{surefireArgLine}</argLine>
                     <includes><include>**/*Test.java</include></includes>
                     <excludes><exclude>**/*IT.java</exclude></excludes>
+                    <!-- nexus-NEXUSSYNC-01 -->
+                    <excludedGroups>${nexussync.excludedGroups}</excludedGroups>
+                    <systemPropertyVariables>
+                        <nexussync.dir>${nexussync.dir}</nexussync.dir>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
 
@@ -237,6 +270,10 @@
                         <!-- UserRole.java declara `package main.java.com.nexus.entity`, asi que
                              compila fuera del arbol com/nexus/. Ver nexus-JAVA-01. -->
                         <exclude>main/java/**</exclude>
+                        <!-- nexus-NEXUSSYNC-01: las UNICAS dos exclusiones del paquete: el main de la CLI
+                             y el lanzador real de procesos (arkannie). Todo lo demas entra en la regla CLASS. -->
+                        <exclude>com/nexus/nexussync/cli/Main.class</exclude>
+                        <exclude>com/nexus/nexussync/ann/DefaultLauncher.class</exclude>
                     </excludes>
                 </configuration>
                 <executions>
@@ -301,6 +338,8 @@
                                         <!-- nexus-AUTH-06: solo CorsProperties (100 % linea y rama).
                                              SecurityConfig NO entra: 10/28 lineas. -->
                                         <include>com.nexus.config.CorsProperties</include>
+                                        <!-- nexus-NEXUSSYNC-01: todo el paquete, linea y rama. -->
+                                        <include>com.nexus.nexussync.*</include>
                                     </includes>
                                     <limits>
                                         <limit><counter>LINE</counter><value>COVEREDRATIO</value>
@@ -323,6 +362,100 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- nexus-NEXUSSYNC-01: google-java-format, solo ficheros bajo .../nexussync/... -->
+            <plugin>
+                <groupId>com.spotify.fmt</groupId>
+                <artifactId>fmt-maven-plugin</artifactId>
+                <version>${fmt-maven-plugin.version}</version>
+                <configuration>
+                    <style>google</style>
+                    <filesPathPattern>.*[/\\]nexussync[/\\].*</filesPathPattern>
+                    <skipSortingImports>false</skipSortingImports>
+                </configuration>
+                <executions>
+                    <execution><id>nexussync-fmt</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- nexus-NEXUSSYNC-01: google_checks, solo com/nexus/nexussync/** (main y test).
+                 google_checks emite severidad warning: violationSeverity=warning para que rompa. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${maven-checkstyle-plugin.version}</version>
+                <configuration>
+                    <configLocation>google_checks.xml</configLocation>
+                    <includes>com/nexus/nexussync/**/*.java</includes>
+                    <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                    <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
+                    <violationSeverity>warning</violationSeverity>
+                    <failOnViolation>true</failOnViolation>
+                    <consoleOutput>true</consoleOutput>
+                    <linkXRef>false</linkXRef>
+                </configuration>
+                <executions>
+                    <execution><id>nexussync-checkstyle</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- nexus-NEXUSSYNC-01: SpotBugs + FindSecBugs, solo clases de com.nexus.nexussync. -->
+            <plugin>
+                <groupId>com.github.spotbugs</groupId>
+                <artifactId>spotbugs-maven-plugin</artifactId>
+                <version>${spotbugs-maven-plugin.version}</version>
+                <configuration>
+                    <effort>Max</effort>
+                    <threshold>Medium</threshold>
+                    <onlyAnalyze>com.nexus.nexussync.-</onlyAnalyze>
+                    <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
+                    <failOnError>true</failOnError>
+                    <plugins>
+                        <plugin>
+                            <groupId>com.h3xstream.findsecbugs</groupId>
+                            <artifactId>findsecbugs-plugin</artifactId>
+                            <version>${findsecbugs-plugin.version}</version>
+                        </plugin>
+                    </plugins>
+                </configuration>
+                <executions>
+                    <execution><id>nexussync-spotbugs</id>
+                        <phase>verify</phase>
+                        <goals><goal>check</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- nexus-NEXUSSYNC-01: OWASP dependency-check SOLO bajo -Paudit (descarga la base NVD: lento).
+             -Ddependency-check.skip=true permite comprobar que el perfil existe sin descargar nada. -->
+        <profile>
+            <id>audit</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.owasp</groupId>
+                        <artifactId>dependency-check-maven</artifactId>
+                        <version>${dependency-check-maven.version}</version>
+                        <configuration>
+                            <failBuildOnCVSS>7</failBuildOnCVSS>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals><goal>check</goal></goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

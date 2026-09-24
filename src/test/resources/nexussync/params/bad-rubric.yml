@@ -1,0 +1,5 @@
+# U1-06: rubric criteria that no longer add up to 1 (0.35 -> 0.10 leaves 0.75).
+experiment: bad-rubric
+rubric:
+  criteria:
+    compatibilidad: 0.10

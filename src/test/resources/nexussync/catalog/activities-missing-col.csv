@@ -1,0 +1,2 @@
+activity_id,title,activity_type,location_scope,place_types,interests,seasons,duration_min,duration_avg,duration_max,difficulty_physical,difficulty_mental,collaboration,preparation,requires_booking,equipment,cost_mxn_pp,price_band,is_outdoor,weather_ok,ambience,description,rationale,enriched_by,enriched_at,confidence,reviewed_by,needs_review
+rompecabezas,Rompecabezas,PUZZLE,HOME,,juegos|quedarse-en-casa,ANY,60,120,240,0,3,7,1,0,rompecabezas,0,FREE,0,ANY,HOME|QUIET,Armar un rompecabezas.,Casa.,synthetic,2026-09-23,1.0,synthetic,0

@@ -1,0 +1,4 @@
+# U1-04: sampler.eta above its declared range [0, 2].
+experiment: out-of-range
+sampler:
+  eta: 5.0

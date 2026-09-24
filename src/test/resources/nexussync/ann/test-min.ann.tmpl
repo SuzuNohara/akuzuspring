@@ -1,0 +1,8 @@
+# ann v0.3
+// test-min.ann.tmpl — minimal template for ProgramRendererTest (U6-01, U6-02).
+// Placeholders use double braces; quotes around string values are placed here, never by the renderer.
+$k = {{k}}
+$sample = "{{sample}}"
+$note = "{{note}}"
+[echo] --id=a : $sample
+[return] --id=r $k

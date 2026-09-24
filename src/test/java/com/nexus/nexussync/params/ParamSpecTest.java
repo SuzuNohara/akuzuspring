@@ -3,8 +3,10 @@ package com.nexus.nexussync.params;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 import java.lang.reflect.RecordComponent;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -101,6 +103,70 @@ final class ParamSpecTest {
     assertThatThrownBy(() -> ParamSpec.validate(broken))
         .isInstanceOf(ParamsException.class)
         .hasMessageContaining("bench");
+  }
+
+  // D-20 (NOVA): learning.w_min debe ser menor que learning.w_max
+  @Test
+  void given_weightMinNotBelowWeightMax_when_validate_then_paramsExceptionNamesBothPaths() {
+    Params equal = withLearning(new LearningParams(0.3, 0.45, 0.15, 3, 0.4, 0.4));
+    Params inverted = withLearning(new LearningParams(0.3, 0.45, 0.15, 3, 0.6, 0.02));
+
+    assertThatThrownBy(() -> ParamSpec.validate(equal))
+        .isInstanceOf(ParamsException.class)
+        .hasMessageContaining("learning.w_min")
+        .hasMessageContaining("learning.w_max");
+    assertThatThrownBy(() -> ParamSpec.validate(inverted))
+        .isInstanceOf(ParamsException.class)
+        .hasMessageContaining("learning.w_min = 0.6")
+        .hasMessageContaining("learning.w_max = 0.02");
+  }
+
+  // D-19
+  @Test
+  void given_defaults_when_load_then_rubricIsInvestigationRubricParams() throws Exception {
+    Path defaults = ParamsLoaderTest.defaults();
+
+    RubricParams rubric = ParamsLoader.load(defaults, defaults).rubric();
+
+    assertThat(rubric.criteria())
+        .containsOnlyKeys(
+            "fit_interes_pareja",
+            "ajuste_clima_emocional",
+            "novedad",
+            "colaboracion_significativa",
+            "accesibilidad_logistica",
+            "balance_core_expansion",
+            "diversidad_triangular",
+            "piso_seguridad")
+        .containsEntry("fit_interes_pareja", 0.22)
+        .containsEntry("piso_seguridad", 0.05);
+    assertThat(rubric.criteria().values().stream().mapToDouble(Double::doubleValue).sum())
+        .isCloseTo(1.0, within(ParamSpec.CRITERIA_TOLERANCE));
+    assertThat(rubric.balance())
+        .containsEntry("max_mismo_activity_type_en_15", 3)
+        .containsEntry("ventana_no_repeticion_dias", 30);
+    assertThat(rubric.descarte())
+        .containsEntry("prob_lluvia_max_outdoor", 0.6)
+        .containsEntry("umbral_difficulty_alto", 7.0);
+  }
+
+  private static Params withLearning(LearningParams learning) {
+    Params b = ParamsRecordsTest.sample();
+    return new Params(
+        b.experiment(),
+        b.seed(),
+        b.catalogDir(),
+        b.placesCsv(),
+        b.sampler(),
+        b.rounds(),
+        b.agents(),
+        b.decision(),
+        b.place(),
+        learning,
+        b.context(),
+        b.runtime(),
+        b.rubric(),
+        b.bench());
   }
 
   @Test

@@ -1,13 +1,23 @@
 package com.nexus.nexussync.rounds;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
 import com.nexus.nexussync.ann.Envelope;
+import com.nexus.nexussync.ann.RubricRenderer;
+import com.nexus.nexussync.context.Constraints;
 import com.nexus.nexussync.context.Context;
+import com.nexus.nexussync.context.EmotionEntry;
+import com.nexus.nexussync.context.HistoryEntry;
+import com.nexus.nexussync.context.MediatorView;
+import com.nexus.nexussync.context.Profile;
 import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.params.RoundsParams;
 import com.nexus.nexussync.sampler.Sample;
 import com.nexus.nexussync.sampler.SampleItem;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Two-round gate between the sample and the couple's decision (unit U7).
@@ -33,10 +44,32 @@ import java.util.Set;
  * finalSize} of the sample by score.
  *
  * <p>Every agent call, retries included, consumes one unit of the {@link CallBudget}; if a unit
- * cannot be obtained the executor is not called. {@code runDir} is handed to the executor; the gate
- * itself writes nothing in this version.
+ * cannot be obtained the executor is not called.
+ *
+ * <p>Before anything else the gate writes the traces of the run in {@code runDir} ({@link
+ * #writeTraces}): {@value #SAMPLE}, {@value #PROFILE_A}, {@value #PROFILE_B}, {@value #VIEW} and
+ * {@value #RUBRIC}. The profiles never carry {@code truthWeights}, locations or anything the bench
+ * oracle keeps hidden from the agents.
  */
 public final class Gate {
+
+  /** Sample offered to the agents: {@code activity_id} and features per item. */
+  static final String SAMPLE = "sample.json";
+
+  /** Profile of person A as the persona agent sees it. */
+  static final String PROFILE_A = "profile_a.json";
+
+  /** Profile of person B as the persona agent sees it. */
+  static final String PROFILE_B = "profile_b.json";
+
+  /** Output of {@link MediatorView#of}. */
+  static final String VIEW = "mediator_view.json";
+
+  /** Output of {@link RubricRenderer}. */
+  static final String RUBRIC = "rubric.md";
+
+  private static final ObjectMapper JSON =
+      new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
   private static final List<Agent> ROUND1 = List.of(Agent.A, Agent.B, Agent.M);
   private static final List<Agent> PERSONAS = List.of(Agent.A, Agent.B);
@@ -57,15 +90,16 @@ public final class Gate {
    * @param ctx couple context, handed to the executor
    * @param p parameters of the experiment (the gate reads {@link Params#rounds()})
    * @param ex executor of the agent rounds
-   * @param runDir directory of the run, handed to the executor
+   * @param runDir directory of the run: receives the traces and is handed to the executor
    * @param budget call budget shared by the whole run
    * @return the final list, its closure and the parsed picks
-   * @throws AnnException if the executor fails to render, launch or read a round
+   * @throws AnnException {@code RENDER} if a trace cannot be written; any error of the executor
    * @implNote O(n log n) time and O(n) space in the sample size, plus at most five agent calls.
    */
   public GateResult run(
       Sample s, Context ctx, Params p, GateExecutor ex, Path runDir, CallBudget budget)
       throws AnnException {
+    writeTraces(runDir, ctx, s, p);
     RoundsParams rp = p.rounds();
     List<String> sampleIds = s.items().stream().map(SampleItem::activityId).distinct().toList();
     Set<String> offered = new LinkedHashSet<>(sampleIds);
@@ -206,6 +240,97 @@ public final class Gate {
 
   private static List<String> top(List<String> ids, RoundsParams rp) {
     return ids.subList(0, Math.min(ids.size(), Math.max(0, rp.finalSize())));
+  }
+
+  /**
+   * Writes the five traces of a run in {@code runDir}, overwriting them: the sample, both profiles
+   * without {@code truthWeights} nor location, the mediator view and the rubric. The rubric carries
+   * the normative text of {@code specs/rubric-mediador.md} when that file exists under {@code
+   * p.runtime().nexussyncDir()}, and only the parameter tables otherwise.
+   *
+   * @param runDir directory of the run, created if missing
+   * @param ctx couple context
+   * @param s sample offered to the agents
+   * @param p parameters of the experiment ({@code agents}, {@code context}, {@code rubric} and
+   *     {@code runtime} are read)
+   * @throws AnnException {@code RENDER} if a file cannot be written
+   * @implNote O(n + h + r) time and space, n sample items, h history entries, r rubric entries.
+   */
+  static void writeTraces(Path runDir, Context ctx, Sample s, Params p) throws AnnException {
+    json(runDir.resolve(SAMPLE), sampleView(s));
+    json(runDir.resolve(PROFILE_A), profileView(ctx.a()));
+    json(runDir.resolve(PROFILE_B), profileView(ctx.b()));
+    json(runDir.resolve(VIEW), MediatorView.of(ctx, p));
+    Path nexussyncDir = p.runtime().nexussyncDir();
+    if (Files.isRegularFile(nexussyncDir.resolve("specs").resolve("rubric-mediador.md"))) {
+      RubricRenderer.render(p.rubric(), nexussyncDir, runDir.resolve(RUBRIC));
+    } else {
+      RubricRenderer.render(p.rubric(), runDir.resolve(RUBRIC));
+    }
+  }
+
+  private static Map<String, Object> sampleView(Sample s) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (SampleItem item : s.items()) {
+      Map<String, Object> m = new LinkedHashMap<>();
+      m.put("activity_id", item.activityId());
+      m.put("features", new TreeMap<>(item.features()));
+      items.add(m);
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("items", items);
+    return out;
+  }
+
+  private static Map<String, Object> profileView(Profile person) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("user_id", person.userId());
+    m.put("borough", person.borough());
+    m.put("preferences", new TreeMap<>(person.preferences()));
+    m.put("constraints", constraintsView(person.constraints()));
+    List<Map<String, Object>> emotions = new ArrayList<>();
+    for (EmotionEntry e : person.emotionalRecent()) {
+      Map<String, Object> em = new LinkedHashMap<>();
+      em.put("date", e.date().toString());
+      em.put("code", e.code());
+      em.put("intensity", e.intensity());
+      emotions.add(em);
+    }
+    m.put("emotional_recent", emotions);
+    List<Map<String, Object>> history = new ArrayList<>();
+    for (HistoryEntry h : person.history()) {
+      Map<String, Object> hm = new LinkedHashMap<>();
+      hm.put("activity_id", h.activityId());
+      hm.put("date", h.date().toString());
+      hm.put("offered", h.offered());
+      hm.put("chosen", h.chosen());
+      h.rating().ifPresent(r -> hm.put("rating", r));
+      history.add(hm);
+    }
+    m.put("history", history);
+    return m;
+  }
+
+  private static Map<String, Object> constraintsView(Constraints c) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("budget_band", c.budgetBand());
+    m.put("travel_band", c.travelBand());
+    m.put("window_day", c.windowDay().name());
+    m.put("window_start", c.windowStart().toString());
+    m.put("window_end", c.windowEnd().toString());
+    return m;
+  }
+
+  private static void json(Path out, Object value) throws AnnException {
+    try {
+      Path parent = out.toAbsolutePath().getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      JSON.writeValue(out.toFile(), value);
+    } catch (IOException e) {
+      throw new AnnException(AnnException.Kind.RENDER, "cannot write trace " + out, e);
+    }
   }
 
   /** State of a gate run after round one. */

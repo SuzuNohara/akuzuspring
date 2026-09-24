@@ -2,36 +2,91 @@ package com.nexus.nexussync.rounds;
 
 import static com.nexus.nexussync.rounds.FakeGateExecutor.envelope;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nexus.nexussync.ann.AnnException;
 import com.nexus.nexussync.ann.CallBudget;
+import com.nexus.nexussync.context.Climate;
+import com.nexus.nexussync.context.Constraints;
 import com.nexus.nexussync.context.Context;
+import com.nexus.nexussync.context.EmotionEntry;
+import com.nexus.nexussync.context.HistoryEntry;
+import com.nexus.nexussync.context.Level;
+import com.nexus.nexussync.context.Location;
+import com.nexus.nexussync.context.Profile;
+import com.nexus.nexussync.params.AgentsParams;
+import com.nexus.nexussync.params.ContextParams;
+import com.nexus.nexussync.params.ExecutorKind;
+import com.nexus.nexussync.params.Feature;
 import com.nexus.nexussync.params.Fill;
 import com.nexus.nexussync.params.Intersection;
+import com.nexus.nexussync.params.MediatorClimate;
 import com.nexus.nexussync.params.Params;
 import com.nexus.nexussync.params.RankAggregation;
 import com.nexus.nexussync.params.RoundsParams;
+import com.nexus.nexussync.params.RubricParams;
+import com.nexus.nexussync.params.RuntimeParams;
 import com.nexus.nexussync.sampler.Sample;
 import com.nexus.nexussync.sampler.SampleItem;
 import com.nexus.nexussync.sampler.SampleStatus;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class GateTest {
 
-  private static final Path RUN_DIR = Path.of("runs", "gate-test");
-  private static final Context CTX =
-      new Context("1-2", null, null, null, null, List.of(), Map.of(), 0, LocalDate.of(2026, 9, 27));
+  private static final LocalDate TODAY = LocalDate.of(2026, 9, 27);
+  private static final Context CTX = context();
   private static final List<String> F1_A = List.of("s01", "s02", "s03", "s04", "s05");
 
   private final Gate gate = new Gate();
 
-  private static Sample sample() {
+  @TempDir Path runDir;
+
+  /**
+   * Builds a couple whose profiles carry truth weights, a location and a rating, so the traces can
+   * be checked for leaks.
+   */
+  static Context context() {
+    return new Context(
+        "1-2",
+        profile(1, "museos", 5),
+        profile(2, "senderismo", 4),
+        new Climate(Level.MID, Level.HIGH),
+        new Climate(Level.LOW, Level.MID),
+        List.of(),
+        Map.of(),
+        1,
+        TODAY);
+  }
+
+  private static Profile profile(int userId, String interest, int level) {
+    return new Profile(
+        userId,
+        "Coyoacan",
+        Optional.of(new Location(19.35, -99.16)),
+        Map.of(interest, level),
+        List.of(new EmotionEntry(TODAY.minusDays(1), "HAPPY", 4)),
+        List.of(new HistoryEntry("s09", TODAY.minusDays(3), true, true, OptionalInt.of(5))),
+        new Constraints(
+            "MID", "NEAR", DayOfWeek.SATURDAY, LocalTime.of(10, 0), LocalTime.of(14, 0)),
+        Optional.of(Map.of(Feature.INTEREST, 0.7, Feature.PRICE, 0.3)));
+  }
+
+  static Sample sample() {
     List<SampleItem> items = new ArrayList<>();
     for (int i = 10; i >= 1; i--) {
       items.add(new SampleItem(String.format("s%02d", i), 1.0 - i * 0.05, Map.of(), false));
@@ -57,6 +112,14 @@ class GateTest {
   }
 
   private static Params params(RoundsParams rp) {
+    return params(rp, Path.of("no-such-nexussync"));
+  }
+
+  /**
+   * Parameters with every section the gate and the executor read; the rest stay {@code null}
+   * because neither reads them.
+   */
+  static Params params(RoundsParams rp, Path nexussyncDir) {
     return new Params(
         "gate-test",
         7L,
@@ -64,19 +127,32 @@ class GateTest {
         Path.of("places.csv"),
         null,
         rp,
+        new AgentsParams("haiku", 90, "haiku", 120, MediatorClimate.AGGREGATED),
         null,
         null,
         null,
-        null,
-        null,
-        null,
-        null,
+        new ContextParams(7, 90),
+        new RuntimeParams(
+            ExecutorKind.ARKANNIE,
+            nexussyncDir,
+            nexussyncDir.resolve("arkannie").resolve("bin").resolve("arkannie"),
+            Optional.empty(),
+            200,
+            "0.3.0"),
+        new RubricParams(
+            Map.of("interes_conjunto", 0.6, "novedad", 0.4),
+            Map.of("max_por_tipo", 2),
+            Map.of("rechazada_reciente", 1.0)),
         null);
+  }
+
+  static RoundsParams defaultRounds() {
+    return rounds();
   }
 
   private GateResult run(FakeGateExecutor ex, RoundsParams rp, CallBudget budget)
       throws AnnException {
-    return gate.run(sample(), CTX, params(rp), ex, RUN_DIR, budget);
+    return gate.run(sample(), CTX, params(rp), ex, runDir, budget);
   }
 
   private static FakeGateExecutor f1Setup() {
@@ -363,5 +439,117 @@ class GateTest {
 
     assertThat(ex.round2Calls()).isZero();
     assertThat(r.closure()).isEqualTo(Closure.F3);
+  }
+
+  // U7-13
+  @Test
+  void given_budgetExhaustedBeforeRoundOne_when_run_then_aiUnavailableWithoutCalls()
+      throws AnnException {
+    FakeGateExecutor ex = f1Setup();
+    CallBudget budget = new CallBudget(2);
+
+    GateResult r = run(ex, rounds(), budget);
+
+    assertThat(r.closure()).isEqualTo(Closure.AI_UNAVAILABLE);
+    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s04", "s05");
+    assertThat(ex.round1Calls()).isZero();
+    assertThat(ex.round2Calls()).isZero();
+  }
+
+  // U7-13
+  @Test
+  void given_budgetExhaustedBeforeRoundTwo_when_run_then_f3FromRoundOneWithoutVotes()
+      throws AnnException {
+    FakeGateExecutor ex = f2Setup();
+    CallBudget budget = new CallBudget(4);
+
+    GateResult r = run(ex, rounds(), budget);
+
+    assertThat(r.closure()).isEqualTo(Closure.F3);
+    assertThat(r.round2()).isEmpty();
+    assertThat(r.finalIds()).containsExactly("s01", "s02", "s03", "s06", "s04");
+    assertThat(ex.round2Calls()).isZero();
+  }
+
+  // U7-14
+  @Test
+  void given_run_when_finished_then_runDirHoldsTheFiveTracesWithoutPrivateData()
+      throws AnnException, IOException {
+    GateResult r = run(f1Setup(), rounds(), new CallBudget(200));
+
+    assertThat(r.closure()).isEqualTo(Closure.F1);
+    assertTraces(runDir);
+    assertThat(Files.readString(runDir.resolve(Gate.RUBRIC), StandardCharsets.UTF_8))
+        .contains("interes_conjunto")
+        .doesNotContain("Texto normativo");
+  }
+
+  // U7-14
+  @Test
+  void given_budgetExhausted_when_run_then_tracesStillWritten() throws AnnException, IOException {
+    run(f1Setup(), rounds(), new CallBudget(0));
+
+    assertTraces(runDir);
+  }
+
+  // U7-14
+  @Test
+  void given_rubricSpecInNexussyncDir_when_writeTraces_then_rubricCarriesNormativeText(
+      @TempDir Path nexussyncDir) throws AnnException, IOException {
+    Path specs = Files.createDirectories(nexussyncDir.resolve("specs"));
+    Files.writeString(
+        specs.resolve("rubric-mediador.md"), "texto de la spec", StandardCharsets.UTF_8);
+
+    Gate.writeTraces(runDir, CTX, sample(), params(rounds(), nexussyncDir));
+
+    assertThat(Files.readString(runDir.resolve(Gate.RUBRIC), StandardCharsets.UTF_8))
+        .contains("interes_conjunto")
+        .contains("texto de la spec");
+  }
+
+  // U7-14
+  @Test
+  void given_runDirIsRegularFile_when_run_then_renderError(@TempDir Path dir) throws IOException {
+    Path file = Files.writeString(dir.resolve("not-a-dir"), "x", StandardCharsets.UTF_8);
+
+    assertThatThrownBy(
+            () -> gate.run(sample(), CTX, params(rounds()), f1Setup(), file, new CallBudget(200)))
+        .isInstanceOf(AnnException.class);
+  }
+
+  /**
+   * Checks the five traces of U7-14: all present, profiles without truth weights nor location,
+   * mediator view compliant with U3-10 (no emotional entries, ratings or truth weights).
+   */
+  @SuppressWarnings("unchecked")
+  static void assertTraces(Path dir) throws IOException {
+    for (String name :
+        List.of(Gate.SAMPLE, Gate.PROFILE_A, Gate.PROFILE_B, Gate.VIEW, Gate.RUBRIC)) {
+      assertThat(dir.resolve(name)).isRegularFile();
+    }
+    ObjectMapper json = new ObjectMapper();
+    for (String name : List.of(Gate.PROFILE_A, Gate.PROFILE_B)) {
+      String text = Files.readString(dir.resolve(name), StandardCharsets.UTF_8);
+      assertThat(text)
+          .doesNotContain("truth_weights")
+          .doesNotContain("truthWeights")
+          .doesNotContain("INTEREST")
+          .doesNotContain("location")
+          .doesNotContain("19.35");
+      Map<String, Object> profile = json.readValue(text, Map.class);
+      assertThat(profile)
+          .containsKeys("user_id", "preferences", "constraints", "history", "emotional_recent");
+    }
+    String view = Files.readString(dir.resolve(Gate.VIEW), StandardCharsets.UTF_8);
+    assertThat(view)
+        .contains("preferences_a", "climate_a", "history_agg")
+        .doesNotContain("truth")
+        .doesNotContain("HAPPY")
+        .doesNotContain("\"rating\"")
+        .doesNotContain("19.35");
+    Map<String, Object> sample = json.readValue(dir.resolve(Gate.SAMPLE).toFile(), Map.class);
+    assertThat((List<Map<String, Object>>) sample.get("items"))
+        .hasSize(10)
+        .allSatisfy(item -> assertThat(item).containsOnlyKeys("activity_id", "features"));
   }
 }

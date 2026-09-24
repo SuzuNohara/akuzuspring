@@ -15,7 +15,8 @@ import java.util.Set;
  * (except {@code seed}), keyed by its YAML path. {@link #validate(Params)} walks the records by
  * reflection, so a numeric component added without a range fails fast, and then checks that {@code
  * decision.rank_points} has three entries and that the rubric criteria add up to 1 within {@value
- * #CRITERIA_TOLERANCE}. Enum names are validated earlier by Jackson.
+ * #CRITERIA_TOLERANCE}, and that {@code learning.w_min < learning.w_max}. Enum names are validated
+ * earlier by Jackson.
  */
 final class ParamSpec {
 
@@ -38,13 +39,15 @@ final class ParamSpec {
    *
    * @param params the parameter set to validate
    * @throws ParamsException if a value is absent, out of range, {@code rank_points} has not exactly
-   *     three entries or the rubric criteria do not add up to 1
+   *     three entries, the rubric criteria do not add up to 1 or {@code learning.w_min} is not
+   *     below {@code learning.w_max}
    * @implNote O(c) time, c = record components; O(d) space, d = nesting depth.
    */
   static void validate(Params params) throws ParamsException {
     walk(params, "");
     checkRankPoints(params.decision());
     checkCriteria(params.rubric());
+    checkWeightBounds(params.learning());
   }
 
   /**
@@ -133,6 +136,17 @@ final class ParamSpec {
     if (size != RANK_POINTS_SIZE) {
       throw new ParamsException(
           "decision.rank_points debe tener " + RANK_POINTS_SIZE + " valores, tiene " + size);
+    }
+  }
+
+  private static void checkWeightBounds(LearningParams learning) throws ParamsException {
+    if (!(learning.weightMin() < learning.weightMax())) {
+      throw new ParamsException(
+          String.format(
+              Locale.ROOT,
+              "learning.w_min = %s debe ser menor que learning.w_max = %s",
+              learning.weightMin(),
+              learning.weightMax()));
     }
   }
 

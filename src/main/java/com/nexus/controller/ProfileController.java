@@ -6,6 +6,9 @@ import com.nexus.dto.UpdateAvatarRequest;
 import com.nexus.dto.UpdateAvatarResponse;
 import com.nexus.dto.UpdateProfileRequest;
 import com.nexus.dto.UpdateProfileResponse;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.LinkMembershipGuard;
+import com.nexus.security.OwnershipGuard;
 import com.nexus.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,9 +25,10 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @Slf4j
 public class ProfileController {
-    
+
     private final UserService userService;
-    
+    private final LinkMembershipGuard linkMembershipGuard;
+
     /**
      * Actualizar perfil de usuario (CU05)
      * PUT /api/profile/{userId}
@@ -31,15 +36,17 @@ public class ProfileController {
     @PutMapping("/{userId}")
     public ResponseEntity<UpdateProfileResponse> updateProfile(
             @PathVariable Long userId,
-            @Valid @RequestBody UpdateProfileRequest request) {
-        
+            @Valid @RequestBody UpdateProfileRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de actualización de perfil para usuario ID: {}", userId);
-        
+
         UpdateProfileResponse response = userService.updateProfile(userId, request);
-        
+
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * Actualizar avatar de usuario
      * PUT /api/profile/{userId}/avatar
@@ -47,24 +54,29 @@ public class ProfileController {
     @PutMapping("/{userId}/avatar")
     public ResponseEntity<UpdateAvatarResponse> updateAvatar(
             @PathVariable Long userId,
-            @Valid @RequestBody UpdateAvatarRequest request) {
-        
+            @Valid @RequestBody UpdateAvatarRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de actualización de avatar para usuario ID: {}", userId);
-        
+
         UpdateAvatarResponse response = userService.updateAvatar(userId, request);
-        
+
         return ResponseEntity.ok(response);
     }
-    
+
     /**
-     * Obtener avatar de usuario
+     * Obtener avatar de usuario. La pareja vinculada tambien puede verlo (se muestra en su
+     * pantalla de vinculo), no solo el dueno.
      * GET /api/profile/{userId}/avatar
      */
     @GetMapping("/{userId}/avatar")
-    public ResponseEntity<byte[]> getAvatar(@PathVariable Long userId) {
-        
+    public ResponseEntity<byte[]> getAvatar(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        linkMembershipGuard.requireSelfOrLinkedPartner(currentUser, userId);
+
         log.info("Solicitud de obtención de avatar para usuario ID: {}", userId);
-        
+
         var avatarData = userService.getAvatar(userId);
         
         if (avatarData == null || avatarData.getBytes() == null) {
@@ -83,8 +95,10 @@ public class ProfileController {
      * DELETE /api/profile/{userId}/avatar
      */
     @DeleteMapping("/{userId}/avatar")
-    public ResponseEntity<UpdateAvatarResponse> deleteAvatar(@PathVariable Long userId) {
-        
+    public ResponseEntity<UpdateAvatarResponse> deleteAvatar(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de eliminación de avatar para usuario ID: {}", userId);
         
         UpdateAvatarResponse response = userService.deleteAvatar(userId);
@@ -99,8 +113,10 @@ public class ProfileController {
     @DeleteMapping("/{userId}")
     public ResponseEntity<DeleteAccountResponse> deleteAccount(
             @PathVariable Long userId,
-            @Valid @RequestBody DeleteAccountRequest request) {
-        
+            @Valid @RequestBody DeleteAccountRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de eliminación de cuenta para usuario ID: {}", userId);
         
         DeleteAccountResponse response = userService.deleteAccount(userId, request);
@@ -115,8 +131,10 @@ public class ProfileController {
     @PostMapping("/{userId}/fcm-token")
     public ResponseEntity<Void> registerFCMToken(
             @PathVariable Long userId,
-            @RequestBody java.util.Map<String, String> request) {
-        
+            @RequestBody java.util.Map<String, String> request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Registrando token FCM para usuario ID: {}", userId);
         
         String fcmToken = request.get("fcmToken");

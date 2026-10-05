@@ -4,12 +4,15 @@ import com.nexus.dto.CreateEventRequest;
 import com.nexus.dto.CreateEventResponse;
 import com.nexus.dto.EventResponse;
 import com.nexus.dto.UpdateEventRequest;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.OwnershipGuard;
 import com.nexus.service.EventService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -29,8 +32,10 @@ public class EventController {
     @PostMapping("/create/{userId}")
     public ResponseEntity<CreateEventResponse> createEvent(
             @PathVariable Long userId,
-            @Valid @RequestBody CreateEventRequest request) {
-        
+            @Valid @RequestBody CreateEventRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de creación de evento para usuario: {} - Evento: {}", userId, request.getTitle());
         
         CreateEventResponse response = eventService.createEvent(userId, request);
@@ -44,7 +49,9 @@ public class EventController {
      * Obtener todos los eventos de un usuario
      */
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<EventResponse>> getUserEvents(@PathVariable Long userId) {
+    public ResponseEntity<List<EventResponse>> getUserEvents(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         log.info("Obteniendo eventos para usuario: {}", userId);
         
         List<EventResponse> events = eventService.getUserEvents(userId);
@@ -56,7 +63,9 @@ public class EventController {
      * Obtener eventos pendientes de aprobación para un usuario
      */
     @GetMapping("/user/{userId}/pending-approval")
-    public ResponseEntity<List<EventResponse>> getPendingApprovalEvents(@PathVariable Long userId) {
+    public ResponseEntity<List<EventResponse>> getPendingApprovalEvents(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         log.info("Obteniendo eventos pendientes de aprobación para usuario: {}", userId);
         
         List<EventResponse> pendingEvents = eventService.getPendingApprovalEvents(userId);
@@ -68,7 +77,9 @@ public class EventController {
      * Contar eventos pendientes de aprobación
      */
     @GetMapping("/user/{userId}/pending-count")
-    public ResponseEntity<Long> countPendingApprovals(@PathVariable Long userId) {
+    public ResponseEntity<Long> countPendingApprovals(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         long count = eventService.countPendingApprovals(userId);
         return ResponseEntity.ok(count);
     }
@@ -79,8 +90,10 @@ public class EventController {
     @PostMapping("/{eventId}/approve/{userId}")
     public ResponseEntity<EventResponse> approveEvent(
             @PathVariable Long eventId,
-            @PathVariable Long userId) {
-        
+            @PathVariable Long userId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Usuario {} aprobando evento {}", userId, eventId);
         
         EventResponse approvedEvent = eventService.approveEvent(userId, eventId);
@@ -96,8 +109,10 @@ public class EventController {
     public ResponseEntity<EventResponse> updateEvent(
             @PathVariable Long eventId,
             @PathVariable Long userId,
-            @Valid @RequestBody UpdateEventRequest request) {
-        
+            @Valid @RequestBody UpdateEventRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Solicitud de actualización de evento {} por usuario: {}", eventId, userId);
         
         EventResponse updatedEvent = eventService.updateEvent(eventId, userId, request);
@@ -111,8 +126,10 @@ public class EventController {
     @PostMapping("/{eventId}/reject/{userId}")
     public ResponseEntity<EventResponse> rejectEvent(
             @PathVariable Long eventId,
-            @PathVariable Long userId) {
-        
+            @PathVariable Long userId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Usuario {} rechazando evento {}", userId, eventId);
         
         EventResponse rejectedEvent = eventService.rejectEvent(userId, eventId);
@@ -126,8 +143,10 @@ public class EventController {
     @DeleteMapping("/{eventId}/user/{userId}")
     public ResponseEntity<Void> deleteEvent(
             @PathVariable Long eventId,
-            @PathVariable Long userId) {
-        
+            @PathVariable Long userId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Usuario {} eliminando evento {}", userId, eventId);
         
         eventService.deleteEvent(eventId, userId);
@@ -142,8 +161,10 @@ public class EventController {
     public ResponseEntity<Void> addEventException(
             @PathVariable Long eventId,
             @RequestParam String exceptionDate,
-            @RequestParam Long userId) {
-        
+            @RequestParam Long userId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("Usuario {} agregando excepción al evento {} para la fecha {}", userId, eventId, exceptionDate);
         
         eventService.addEventException(eventId, exceptionDate, userId);

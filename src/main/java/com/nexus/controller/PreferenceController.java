@@ -1,6 +1,8 @@
 package com.nexus.controller;
 
 import com.nexus.dto.*;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.OwnershipGuard;
 import com.nexus.service.PreferenceService;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -9,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -48,7 +51,9 @@ public class PreferenceController {
      * GET /api/preferences/status/{userId}
      */
     @GetMapping("/status/{userId}")
-    public ResponseEntity<QuestionnaireStatusDTO> getQuestionnaireStatus(@PathVariable Long userId) {
+    public ResponseEntity<QuestionnaireStatusDTO> getQuestionnaireStatus(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         log.info("🔍 Verificando estado del cuestionario para usuario {}", userId);
         QuestionnaireStatusDTO status = preferenceService.getQuestionnaireStatus(userId);
         return ResponseEntity.ok(status);
@@ -59,7 +64,9 @@ public class PreferenceController {
      * GET /api/preferences/user/{userId}
      */
     @GetMapping("/user/{userId}")
-    public ResponseEntity<List<UserPreferenceDTO>> getUserPreferences(@PathVariable Long userId) {
+    public ResponseEntity<List<UserPreferenceDTO>> getUserPreferences(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         log.info("👤 Obteniendo preferencias del usuario {}", userId);
         List<UserPreferenceDTO> preferences = preferenceService.getUserPreferences(userId);
         return ResponseEntity.ok(preferences);
@@ -72,8 +79,10 @@ public class PreferenceController {
     @PostMapping("/user/{userId}")
     public ResponseEntity<MessageResponse> saveUserPreferences(
             @PathVariable Long userId,
-            @RequestBody SavePreferencesRequest request) {
-        
+            @RequestBody SavePreferencesRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
         log.info("💾 Guardando preferencias para usuario {}", userId);
         preferenceService.saveUserPreferences(userId, request.getPreferences());
         

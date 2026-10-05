@@ -1,6 +1,8 @@
 package com.nexus.controller;
 
 import com.nexus.dto.*;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.OwnershipGuard;
 import com.nexus.service.ExternalCalendarService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -29,8 +32,10 @@ public class ExternalCalendarController {
     @PostMapping("/link/{userId}")
     public ResponseEntity<ExternalCalendarDTO> linkCalendar(
         @PathVariable Long userId,
-        @Valid @RequestBody LinkCalendarRequest request
+        @Valid @RequestBody LinkCalendarRequest request,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("POST /calendars/external/link/{} - Vinculando calendario", userId);
             ExternalCalendarDTO result = externalCalendarService.linkCalendar(userId, request);
@@ -48,8 +53,10 @@ public class ExternalCalendarController {
     @DeleteMapping("/unlink/{userId}/{deviceCalendarId}")
     public ResponseEntity<Void> unlinkCalendar(
         @PathVariable Long userId,
-        @PathVariable String deviceCalendarId
+        @PathVariable String deviceCalendarId,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("DELETE /calendars/external/unlink/{}/{} - Desvinculando calendario", 
                 userId, deviceCalendarId);
@@ -68,8 +75,10 @@ public class ExternalCalendarController {
     @GetMapping("/{userId}")
     public ResponseEntity<List<ExternalCalendarDTO>> getUserCalendars(
         @PathVariable Long userId,
-        @RequestParam(required = false, defaultValue = "true") Boolean activeOnly
+        @RequestParam(required = false, defaultValue = "true") Boolean activeOnly,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("GET /calendars/external/{} - Obteniendo calendarios", userId);
             List<ExternalCalendarDTO> calendars = externalCalendarService
@@ -90,8 +99,10 @@ public class ExternalCalendarController {
         @PathVariable Long userId,
         @PathVariable String deviceCalendarId,
         @RequestParam(required = false) Boolean syncEnabled,
-        @RequestParam(required = false) String privacyMode
+        @RequestParam(required = false) String privacyMode,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("PATCH /calendars/external/{}/{} - Actualizando configuración", 
                 userId, deviceCalendarId);
@@ -112,8 +123,10 @@ public class ExternalCalendarController {
     @PostMapping("/sync/{userId}")
     public ResponseEntity<Map<String, Object>> syncEvents(
         @PathVariable Long userId,
-        @Valid @RequestBody List<SyncEventRequest> events
+        @Valid @RequestBody List<SyncEventRequest> events,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("POST /calendars/external/sync/{} - Sincronizando {} eventos", 
                 userId, events.size());
@@ -134,8 +147,10 @@ public class ExternalCalendarController {
         @PathVariable Long userId,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
-        @RequestParam(required = false) Long partnerId
+        @RequestParam(required = false) Long partnerId,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("GET /calendars/external/events/{} - Obteniendo eventos externos", userId);
             List<ExternalEventDTO> events = externalCalendarService
@@ -156,8 +171,10 @@ public class ExternalCalendarController {
         @PathVariable Long userId,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
-        @RequestParam(defaultValue = "60") Integer minDurationMinutes
+        @RequestParam(defaultValue = "60") Integer minDurationMinutes,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             log.info("GET /calendars/external/availability/{} - Buscando espacios libres", userId);
             List<AvailabilitySlot> freeSlots = externalCalendarService
@@ -179,8 +196,10 @@ public class ExternalCalendarController {
         @RequestParam Long user2Id,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
-        @RequestParam(defaultValue = "60") Integer minDurationMinutes
+        @RequestParam(defaultValue = "60") Integer minDurationMinutes,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireParticipant(currentUser, user1Id, user2Id);
         try {
             log.info("GET /calendars/external/mutual-availability - Usuarios {} y {}", 
                 user1Id, user2Id);

@@ -2,28 +2,33 @@ package com.nexus.controller;
 
 import com.nexus.dto.LinkCodeResponse;
 import com.nexus.dto.LinkStatusResponse;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.OwnershipGuard;
 import com.nexus.service.LinkService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/link")
 @RequiredArgsConstructor
 public class LinkController {
-    
+
     private final LinkService linkService;
-    
+
     /**
      * CU08 - Generar código de vínculo
      * POST /api/link/generate/{userId}
      */
     @PostMapping("/generate/{userId}")
-    public ResponseEntity<LinkCodeResponse> generateLinkCode(@PathVariable Long userId) {
+    public ResponseEntity<LinkCodeResponse> generateLinkCode(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         LinkCodeResponse response = linkService.generateLinkCode(userId);
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * CU09 - Establecer vínculo
      * POST /api/link/establish/{userId}
@@ -31,27 +36,33 @@ public class LinkController {
     @PostMapping("/establish/{userId}")
     public ResponseEntity<LinkStatusResponse> establishLink(
             @PathVariable Long userId,
-            @RequestBody EstablishLinkRequest request) {
+            @RequestBody EstablishLinkRequest request,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         LinkStatusResponse response = linkService.establishLink(userId, request.getCode());
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * Obtener estado del vínculo del usuario
      * GET /api/link/status/{userId}
      */
     @GetMapping("/status/{userId}")
-    public ResponseEntity<LinkStatusResponse> getLinkStatus(@PathVariable Long userId) {
+    public ResponseEntity<LinkStatusResponse> getLinkStatus(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         LinkStatusResponse response = linkService.getLinkStatus(userId);
         return ResponseEntity.ok(response);
     }
-    
+
     /**
      * CU11 - Eliminar vínculo
      * DELETE /api/link/{userId}
      */
     @DeleteMapping("/{userId}")
-    public ResponseEntity<UnlinkResponse> deleteLink(@PathVariable Long userId) {
+    public ResponseEntity<UnlinkResponse> deleteLink(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         UnlinkResponse response = linkService.deleteLink(userId);
         return ResponseEntity.ok(response);
     }

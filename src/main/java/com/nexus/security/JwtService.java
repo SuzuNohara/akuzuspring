@@ -1,5 +1,6 @@
 package com.nexus.security;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -70,5 +71,30 @@ public class JwtService {
                         .signWith(signingKey, Jwts.SIG.HS256)
                         .compact();
         return new IssuedToken(token, expiresAt);
+    }
+
+    /**
+     * Valida un JWT y extrae el usuario que representa.
+     *
+     * <p>Verifica firma, emisor y caducidad en un solo paso delegado al parser de jjwt; no
+     * duplica esa logica aqui. {@link JwtAuthFilter} es el unico llamador previsto.
+     *
+     * @param token JWT compacto recibido en la cabecera {@code Authorization}.
+     * @return el usuario codificado en los claims {@code sub}/{@code email}.
+     * @throws io.jsonwebtoken.JwtException si la firma no verifica, el token caduco, el emisor no
+     *     coincide, o el token esta malformado.
+     * @implNote O(1) en tiempo y espacio respecto del tamano del token.
+     */
+    public AuthenticatedUser parse(String token) {
+        Claims claims =
+                Jwts.parser()
+                        .verifyWith(signingKey)
+                        .requireIssuer(issuer)
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload();
+        long userId = Long.parseLong(claims.getSubject());
+        String email = claims.get("email", String.class);
+        return new AuthenticatedUser(userId, email);
     }
 }

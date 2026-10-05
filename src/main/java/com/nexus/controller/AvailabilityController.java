@@ -5,8 +5,11 @@ import com.nexus.dto.AvailabilityScheduleDTO;
 import com.nexus.entity.AvailabilitySchedule;
 import com.nexus.entity.User;
 import com.nexus.repository.UserRepository;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.OwnershipGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -28,8 +31,9 @@ public class AvailabilityController {
     @GetMapping("/calculate/{userId}")
     public ResponseEntity<Map<String, Object>> calculateAvailableSlots(
             @PathVariable Long userId,
-            @RequestParam(defaultValue = "7") int days) {
-        
+            @RequestParam(defaultValue = "7") int days,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             Map<String, Object> result = availabilityService.calculateAvailableSlots(userId, days);
             return ResponseEntity.ok(result);
@@ -51,8 +55,9 @@ public class AvailabilityController {
     public ResponseEntity<Map<String, Object>> findMutualAvailability(
             @PathVariable Long userId1,
             @PathVariable Long userId2,
-            @RequestParam(defaultValue = "7") int days) {
-        
+            @RequestParam(defaultValue = "7") int days,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireParticipant(currentUser, userId1, userId2);
         try {
             Map<String, Object> result = availabilityService.findMutualAvailability(userId1, userId2, days);
             return ResponseEntity.ok(result);
@@ -70,7 +75,9 @@ public class AvailabilityController {
      * GET /api/availability/schedule/{userId}
      */
     @GetMapping("/schedule/{userId}")
-    public ResponseEntity<?> getUserSchedule(@PathVariable Long userId) {
+    public ResponseEntity<?> getUserSchedule(
+            @PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             var schedule = availabilityService.getUserSchedule(userId);
             return ResponseEntity.ok(schedule);
@@ -90,8 +97,10 @@ public class AvailabilityController {
     @PutMapping("/schedule/{userId}")
     public ResponseEntity<?> saveUserSchedule(
         @PathVariable Long userId,
-        @RequestBody java.util.List<AvailabilityScheduleDTO> body
+        @RequestBody java.util.List<AvailabilityScheduleDTO> body,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
         try {
             System.out.println("📥 Recibiendo request para guardar horarios de usuario: " + userId);
             System.out.println("📋 Cantidad de días recibidos: " + body.size());

@@ -159,8 +159,90 @@ class JwtServiceTest {
                 .isInstanceOf(SignatureException.class);
     }
 
+    @Test
+    @DisplayName("should return the user id and email encoded in a valid token when parsed")
+    void shouldReturnTheUserIdAndEmailEncodedInAValidTokenWhenParsed() {
+        JwtService service = new JwtService(properties(TEST_SECRET));
+        IssuedToken issued = service.issueFor(USER_ID, USER_EMAIL);
+
+        AuthenticatedUser parsed = service.parse(issued.token());
+
+        assertThat(parsed.userId()).isEqualTo(USER_ID);
+        assertThat(parsed.email()).isEqualTo(USER_EMAIL);
+    }
+
+    @Test
+    @DisplayName("should reject an expired token when parsed")
+    void shouldRejectAnExpiredTokenWhenParsed() {
+        JwtService service = new JwtService(properties(TEST_SECRET));
+        String expired = expiredTokenFor(TEST_SECRET);
+
+        assertThatThrownBy(() -> service.parse(expired))
+                .isInstanceOf(io.jsonwebtoken.ExpiredJwtException.class);
+    }
+
+    @Test
+    @DisplayName("should reject a token signed with a different secret when parsed")
+    void shouldRejectATokenSignedWithADifferentSecretWhenParsed() {
+        JwtService issuer = new JwtService(properties(OTHER_SECRET));
+        JwtService verifier = new JwtService(properties(TEST_SECRET));
+        IssuedToken issued = issuer.issueFor(USER_ID, USER_EMAIL);
+
+        assertThatThrownBy(() -> verifier.parse(issued.token()))
+                .isInstanceOf(SignatureException.class);
+    }
+
+    @Test
+    @DisplayName("should reject a malformed token when parsed")
+    void shouldRejectAMalformedTokenWhenParsed() {
+        JwtService service = new JwtService(properties(TEST_SECRET));
+
+        assertThatThrownBy(() -> service.parse("esto-no-es-un-jwt"))
+                .isInstanceOf(io.jsonwebtoken.JwtException.class);
+    }
+
+    @Test
+    @DisplayName("should reject a token with an unexpected issuer when parsed")
+    void shouldRejectATokenWithAnUnexpectedIssuerWhenParsed() {
+        JwtService service = new JwtService(properties(TEST_SECRET));
+        String wrongIssuer = tokenWithIssuer(TEST_SECRET, "otro-emisor");
+
+        assertThatThrownBy(() -> service.parse(wrongIssuer))
+                .isInstanceOf(io.jsonwebtoken.IncorrectClaimException.class);
+    }
+
     private static JwtProperties properties(String secret) {
         return new JwtProperties(secret, TTL_MILLIS, TEST_ISSUER);
+    }
+
+    /** Token ya caducado, construido a mano porque {@code issueFor} siempre usa el TTL vigente. */
+    private static String expiredTokenFor(String secret) {
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        Instant issuedAt = Instant.now().minusSeconds(120);
+        Instant expiration = Instant.now().minusSeconds(60);
+        return Jwts.builder()
+                .issuer(TEST_ISSUER)
+                .subject(Long.toString(USER_ID))
+                .claim("email", USER_EMAIL)
+                .issuedAt(java.util.Date.from(issuedAt))
+                .expiration(java.util.Date.from(expiration))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
+    }
+
+    /** Token valido en todo menos el emisor, para probar que {@code parse} tambien lo exige. */
+    private static String tokenWithIssuer(String secret, String issuer) {
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        Instant issuedAt = Instant.now();
+        Instant expiration = issuedAt.plusSeconds(TTL_SECONDS);
+        return Jwts.builder()
+                .issuer(issuer)
+                .subject(Long.toString(USER_ID))
+                .claim("email", USER_EMAIL)
+                .issuedAt(java.util.Date.from(issuedAt))
+                .expiration(java.util.Date.from(expiration))
+                .signWith(key, Jwts.SIG.HS256)
+                .compact();
     }
 
     /**

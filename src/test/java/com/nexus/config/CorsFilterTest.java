@@ -49,8 +49,9 @@ class CorsFilterTest {
 
     @BeforeEach
     void buildFilterOverTheRealPolicy() {
+        // jwtService no participa en corsConfigurationSource(); null es seguro aqui.
         CorsConfigurationSource source =
-                new SecurityConfig()
+                new SecurityConfig(null)
                         .corsConfigurationSource(new CorsProperties(List.of(ALLOWED_ORIGIN)));
         filter = new CorsFilter(source);
         chain = new MockFilterChain();

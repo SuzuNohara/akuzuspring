@@ -26,8 +26,9 @@ class SecurityConfigCorsTest {
 
     @BeforeEach
     void resolveConfigurationForAnApiPath() {
+        // jwtService no participa en corsConfigurationSource(); null es seguro aqui.
         CorsConfigurationSource source =
-                new SecurityConfig()
+                new SecurityConfig(null)
                         .corsConfigurationSource(new CorsProperties(List.of(ALLOWED_ORIGIN)));
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/events/1");

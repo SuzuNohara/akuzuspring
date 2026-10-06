@@ -11,8 +11,13 @@
 -- exige cifrado en reposo. Se reutiliza la columna created_at ya existente para la fecha de
 -- registro, en vez de anadir una columna logged_at nueva.
 
--- idx_em_user_time usa occurred_at, que se elimina -- hay que tumbar el indice antes de poder
--- soltar la columna, y se repone apuntando a created_at (misma intencion: historial por fecha).
+-- idx_em_user_time (user_id, occurred_at) es el indice que respalda el FK de user_id, asi que
+-- MySQL no deja tumbarlo (Error 1553) hasta que exista otro indice que empiece por user_id.
+-- Por eso el orden: 1) crear el indice nuevo sobre created_at (misma intencion: historial por
+-- fecha), 2) tumbar el viejo, 3) ya sin indice encima, soltar occurred_at y el resto.
+ALTER TABLE `nexus`.`emotion_logs`
+  ADD INDEX `idx_emotion_logs_user_created` (`user_id`, `created_at`);
+
 ALTER TABLE `nexus`.`emotion_logs`
   DROP INDEX `idx_em_user_time`;
 
@@ -21,5 +26,4 @@ ALTER TABLE `nexus`.`emotion_logs`
   DROP COLUMN `emotion_code`,
   DROP COLUMN `intensity`,
   DROP COLUMN `notes`,
-  DROP COLUMN `occurred_at`,
-  ADD INDEX `idx_emotion_logs_user_created` (`user_id`, `created_at`);
+  DROP COLUMN `occurred_at`;

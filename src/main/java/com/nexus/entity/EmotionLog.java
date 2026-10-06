@@ -32,7 +32,11 @@ public class EmotionLog {
     @Column(name = "encrypted_payload", nullable = false, length = 512)
     private String encryptedPayload;
 
+    /**
+     * Reutiliza la columna created_at ya existente en la tabla real (en vez de anadir una
+     * logged_at nueva) -- ver add_emotion_logs.sql.
+     */
     @CreationTimestamp
-    @Column(name = "logged_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant loggedAt;
 }

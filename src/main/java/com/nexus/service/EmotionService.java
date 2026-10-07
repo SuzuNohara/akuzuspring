@@ -10,10 +10,13 @@ import com.nexus.exception.ResourceNotFoundException;
 import com.nexus.repository.EmotionLogRepository;
 import com.nexus.repository.UserRepository;
 import com.nexus.security.AesEncryptionService;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * RF-31/RF-32 - Registro e historial de estado emocional.
@@ -30,8 +33,14 @@ public class EmotionService {
     private final EmotionLogRepository emotionLogRepository;
     private final UserRepository userRepository;
     private final AesEncryptionService aesEncryptionService;
+    private final Clock clock;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * RN-38: un solo registro por dia (dia de la CDMX, segun {@link #clock}); registrar de nuevo el
+     * mismo dia reemplaza el anterior.
+     */
+    @Transactional
     public EmotionLogResponse logEmotion(Long userId, LogEmotionRequest request) {
         User user =
                 userRepository
@@ -41,6 +50,16 @@ public class EmotionService {
         EmotionPayload payload =
                 new EmotionPayload(request.getValence(), request.getActivation(), request.getLabel());
         String encrypted = aesEncryptionService.encrypt(toJson(payload));
+
+        LocalDate today = LocalDate.now(clock);
+        List<EmotionLog> alreadyToday =
+                emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                        userId,
+                        today.atStartOfDay(clock.getZone()).toInstant(),
+                        today.plusDays(1).atStartOfDay(clock.getZone()).toInstant());
+        if (!alreadyToday.isEmpty()) {
+            emotionLogRepository.deleteAll(alreadyToday);
+        }
 
         EmotionLog saved =
                 emotionLogRepository.save(

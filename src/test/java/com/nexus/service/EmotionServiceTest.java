@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -16,11 +19,14 @@ import com.nexus.exception.ResourceNotFoundException;
 import com.nexus.repository.EmotionLogRepository;
 import com.nexus.repository.UserRepository;
 import com.nexus.security.AesEncryptionService;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 /**
  * RF-31/RF-32: el servicio nunca debe guardar ni exponer valencia/activacion/etiqueta en claro --
@@ -34,8 +40,75 @@ class EmotionServiceTest {
     private final EmotionLogRepository emotionLogRepository = mock(EmotionLogRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final AesEncryptionService aesEncryptionService = mock(AesEncryptionService.class);
+
+    /** 23:30 del 6 de octubre en la CDMX (UTC-6) = 05:30 del 7 de octubre en UTC. */
+    private static final Instant NOW_CDMX_LATE_NIGHT = Instant.parse("2026-10-07T05:30:00Z");
+
+    private static final ZoneId CDMX = ZoneId.of("America/Mexico_City");
+
     private final EmotionService service =
-            new EmotionService(emotionLogRepository, userRepository, aesEncryptionService);
+            new EmotionService(
+                    emotionLogRepository,
+                    userRepository,
+                    aesEncryptionService,
+                    Clock.fixed(NOW_CDMX_LATE_NIGHT, CDMX));
+
+    private void givenAUserAndEncryption() {
+        given(userRepository.findById(USER_ID)).willReturn(Optional.of(User.builder().id(USER_ID).build()));
+        given(aesEncryptionService.encrypt(anyString())).willReturn("CIFRADO-NUEVO");
+        given(emotionLogRepository.save(any(EmotionLog.class))).willAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @Test
+    @DisplayName("should replace the log already registered today instead of adding a second one (RN-38)")
+    void shouldReplaceTheLogAlreadyRegisteredTodayInsteadOfAddingASecondOne() {
+        givenAUserAndEncryption();
+        EmotionLog earlierToday = EmotionLog.builder().id(7L).encryptedPayload("CIFRADO-VIEJO").build();
+        given(
+                        emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                                eq(USER_ID), any(Instant.class), any(Instant.class)))
+                .willReturn(List.of(earlierToday));
+
+        service.logEmotion(USER_ID, LogEmotionRequest.builder().valence(0.5).activation(-0.5).build());
+
+        InOrder order = inOrder(emotionLogRepository);
+        order.verify(emotionLogRepository).deleteAll(List.of(earlierToday));
+        order.verify(emotionLogRepository).save(any(EmotionLog.class));
+    }
+
+    @Test
+    @DisplayName("should not delete anything on the first log of the day")
+    void shouldNotDeleteAnythingOnTheFirstLogOfTheDay() {
+        givenAUserAndEncryption();
+        given(
+                        emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                                eq(USER_ID), any(Instant.class), any(Instant.class)))
+                .willReturn(List.of());
+
+        service.logEmotion(USER_ID, LogEmotionRequest.builder().valence(0.5).activation(-0.5).build());
+
+        verify(emotionLogRepository, never()).deleteAll(any());
+        verify(emotionLogRepository).save(any(EmotionLog.class));
+    }
+
+    @Test
+    @DisplayName("should use the Mexico City calendar day, not the UTC day (RN-38)")
+    void shouldUseTheMexicoCityCalendarDayNotTheUtcDay() {
+        givenAUserAndEncryption();
+        given(
+                        emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                                eq(USER_ID), any(Instant.class), any(Instant.class)))
+                .willReturn(List.of());
+
+        service.logEmotion(USER_ID, LogEmotionRequest.builder().valence(0.5).activation(-0.5).build());
+
+        // A las 23:30 del 6 de octubre en la CDMX, "hoy" es el 6, no el 7 (que es lo que diria UTC).
+        verify(emotionLogRepository)
+                .findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                        USER_ID,
+                        Instant.parse("2026-10-06T06:00:00Z"),
+                        Instant.parse("2026-10-07T06:00:00Z"));
+    }
 
     @Test
     @DisplayName("should throw resource not found when the user does not exist")

@@ -2,6 +2,7 @@ package com.nexus.service;
 
 import com.nexus.dto.*;
 import com.nexus.entity.*;
+import com.nexus.exception.BadRequestException;
 import com.nexus.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -111,7 +112,7 @@ public class PreferenceService {
         // Guardar cada preferencia
         for (UserPreferenceRequest req : preferences) {
             Preference preference = preferenceRepository.findById(req.getPreferenceId())
-                    .orElseThrow(() -> new RuntimeException("Preferencia no encontrada: " + req.getPreferenceId()));
+                    .orElseThrow(() -> new BadRequestException("Preferencia no encontrada: " + req.getPreferenceId()));
             
             UserPreferenceId id = new UserPreferenceId(userId, req.getPreferenceId());
             

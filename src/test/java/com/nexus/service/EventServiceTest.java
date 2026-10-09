@@ -16,6 +16,7 @@ import com.nexus.entity.EventStatus;
 import com.nexus.entity.Link;
 import com.nexus.entity.User;
 import com.nexus.exception.BadRequestException;
+import com.nexus.exception.ForbiddenException;
 import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.LinkRepository;
@@ -162,6 +163,24 @@ class EventServiceTest {
         assertThat(confirmed.getStatus()).isEqualTo(EventStatus.PENDING);
         assertThat(confirmed.getCreatorApproved()).isTrue();
         assertThat(confirmed.getPartnerApproved()).isFalse();
+    }
+
+    @Test
+    @DisplayName("should forbid editing an event to someone outside its link")
+    void shouldForbidEditingAnEventToSomeoneOutsideItsLink() {
+        long strangerId = 30L;
+        Event confirmed =
+                event().status(EventStatus.CONFIRMED).creatorApproved(true).partnerApproved(true).build();
+        given(eventRepository.findById(EVENT_ID)).willReturn(Optional.of(confirmed));
+        given(userRepository.findById(strangerId))
+                .willReturn(Optional.of(User.builder().id(strangerId).build()));
+        UpdateEventRequest request = new UpdateEventRequest();
+        request.setTitle("Otro titulo");
+
+        assertThatThrownBy(() -> service.updateEvent(EVENT_ID, strangerId, request))
+                .isInstanceOf(ForbiddenException.class);
+        verify(eventRepository, never()).save(any(Event.class));
+        assertThat(confirmed.getTitle()).isEqualTo("Cena");
     }
 
     @Test

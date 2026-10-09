@@ -12,6 +12,7 @@ import com.nexus.entity.EventStatus;
 import com.nexus.entity.Link;
 import com.nexus.entity.User;
 import com.nexus.exception.BadRequestException;
+import com.nexus.exception.ForbiddenException;
 import com.nexus.exception.ResourceNotFoundException;
 import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
@@ -328,7 +329,7 @@ public class EventService {
                            link.getPartnerUser().getId().equals(userId);
         
         if (!isPartner) {
-            throw new IllegalArgumentException("No tienes permiso para editar este evento");
+            throw new ForbiddenException("No tienes permiso para editar este evento");
         }
         
         // Determinar si se están modificando campos que requieren re-aprobación
@@ -565,7 +566,7 @@ public class EventService {
         boolean isPartner = (link.getInitiatorUser().getId().equals(userId) || link.getPartnerUser().getId().equals(userId)) && !isCreator;
         
         if (!isCreator && !isPartner) {
-            throw new IllegalArgumentException("No tienes permiso para modificar este evento");
+            throw new ForbiddenException("No tienes permiso para modificar este evento");
         }
         
         // 3. Verificar que el evento sea recurrente

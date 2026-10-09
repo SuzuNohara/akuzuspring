@@ -28,7 +28,7 @@ public class EmailService {
     private String appLogoUrl;
     
     /**
-     * Envía un código de verificación de email (RN-02: validez 1 hora)
+     * Envía un código de verificación de email (RN-02: validez 15 minutos)
      * @param toEmail Email del destinatario
      * @param verificationCode Código de 6 dígitos
      */
@@ -76,7 +76,7 @@ public class EmailService {
     }
     
     /**
-     * Envía un código de recuperación de contraseña (RN-02: validez 1 hora)
+     * Envía un código de recuperación de contraseña (RN-04: validez 1 hora)
      * @param toEmail Email del destinatario
      * @param resetCode Código de 6 dígitos
      */
@@ -153,7 +153,7 @@ public class EmailService {
             "<div class='code-section'>" +
             "<div class='code-label'>C&oacute;digo de Verificaci&oacute;n</div>" +
             "<div class='code-box'>" + code + "</div>" +
-            "<div class='validity'>Este c&oacute;digo es v&aacute;lido por <strong>1 hora</strong></div>" +
+            "<div class='validity'>Este c&oacute;digo es v&aacute;lido por <strong>15 minutos</strong></div>" +
             "</div>" +
             "<div class='divider'></div>" +
             "<div class='message'>" +

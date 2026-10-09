@@ -170,7 +170,7 @@ public class UserService {
             .user(user)
             .token(token)
             .purpose(VerificationToken.TokenPurpose.EMAIL_CONFIRM)
-            .expiresAt(Instant.now().plusSeconds(3600)) // 1 hora RN-02
+            .expiresAt(Instant.now().plusSeconds(900)) // 15 minutos RN-02
             .build();
         
         return verificationTokenRepository.save(verificationToken);
@@ -185,7 +185,7 @@ public class UserService {
     
     /**
      * Verifica el código de email y activa la cuenta del usuario
-     * RN-02: El código tiene validez de 1 hora
+     * RN-02: El código tiene validez de 15 minutos
      */
     @Transactional
     public User verifyEmail(String email, String code) {
@@ -211,7 +211,7 @@ public class UserService {
             throw new BadRequestException("Código de verificación incorrecto");
         }
         
-        // Verificar expiración (RN-02: 1 hora)
+        // Verificar expiración (RN-02: 15 minutos)
         if (token.isExpired()) {
             throw new BadRequestException("El código de verificación ha expirado. Solicita uno nuevo.");
         }

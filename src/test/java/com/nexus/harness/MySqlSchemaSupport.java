@@ -34,7 +34,8 @@ public abstract class MySqlSchemaSupport {
       "db/add_fcm_token.sql",
       "db/add_availability_schedules.sql",
       "db/add_calendars_external_columns.sql",
-      "db/add_calendar_events_external_columns.sql"};
+      "db/add_calendar_events_external_columns.sql",
+      "db/add_mood_tables.sql"};
 
   /** Los tres codigos que db-migrate lee como "este objeto ya existe". */
   static final Set<String> TOLERATED = Set.of("1050", "1060", "1061");
@@ -89,7 +90,14 @@ public abstract class MySqlSchemaSupport {
           container.execInContainer(
               "sh",
               "-c",
-              "MYSQL_PWD=" + PASSWORD + " mysql --force -u" + USER + " " + DB + " < " + containerPath
+              "MYSQL_PWD="
+                  + PASSWORD
+                  + " mysql --force --default-character-set=utf8mb4 -u"
+                  + USER
+                  + " "
+                  + DB
+                  + " < "
+                  + containerPath
                   + " 2>&1");
       return ERROR_CODE.matcher(result.getStdout()).results().map(m -> m.group(1)).toList();
     } catch (IOException | InterruptedException e) {

@@ -39,6 +39,7 @@ public class SecurityConfig {
                 .requestMatchers("/events/**").permitAll()
                 .requestMatchers("/calendars/**").permitAll()
                 .requestMatchers("/availability/**").permitAll()
+                .requestMatchers("/mood/**").permitAll() // hasta nexus-AUTH-02: entonces exige token (RN-28)
                 .requestMatchers("/health").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()

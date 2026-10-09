@@ -34,7 +34,9 @@ public abstract class MySqlSchemaSupport {
       "db/add_fcm_token.sql",
       "db/add_availability_schedules.sql",
       "db/add_calendars_external_columns.sql",
-      "db/add_calendar_events_external_columns.sql"};
+      "db/add_calendar_events_external_columns.sql",
+      "db/add_kb_tables.sql",
+      "db/add_kb_tt_columns.sql"};
 
   /** Los tres codigos que db-migrate lee como "este objeto ya existe". */
   static final Set<String> TOLERATED = Set.of("1050", "1060", "1061");

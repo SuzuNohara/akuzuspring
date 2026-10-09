@@ -48,14 +48,19 @@ class IdeaControllerTest {
     }
 
     @Test
-    @DisplayName("should return 401 or 403 without a token")
-    void shouldRejectWithoutAToken() throws Exception {
-        mockMvc.perform(get("/ideas/" + USER_ID))
-                .andExpect(
-                        result ->
-                                org.assertj.core.api.Assertions.assertThat(
-                                                result.getResponse().getStatus())
-                                        .isIn(401, 403));
+    @DisplayName("should return 401 without a token, so the app can tell an expired session from a forbidden resource")
+    void shouldReturn401WithoutAToken() throws Exception {
+        mockMvc.perform(get("/ideas/" + USER_ID)).andExpect(status().isUnauthorized());
+        verifyNoInteractions(ideaService);
+    }
+
+    @Test
+    @DisplayName("should return 401 with a token that does not verify")
+    void shouldReturn401WithATokenThatDoesNotVerify() throws Exception {
+        given(jwtService.parse(anyString())).willThrow(new io.jsonwebtoken.JwtException("expired"));
+
+        mockMvc.perform(get("/ideas/" + USER_ID).header("Authorization", BEARER))
+                .andExpect(status().isUnauthorized());
         verifyNoInteractions(ideaService);
     }
 

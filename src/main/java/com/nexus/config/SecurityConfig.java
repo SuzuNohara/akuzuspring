@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -45,6 +47,11 @@ public class SecurityConfig {
             )
             .addFilterBefore(
                 new JwtAuthFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
+            // Sin sesion valida (token ausente, vencido o alterado) se responde 401, no el 403
+            // por defecto: el cliente necesita distinguir "inicia sesion de nuevo" de "este
+            // recurso no es tuyo" (ForbiddenException, 403).
+            .exceptionHandling(handling -> handling.authenticationEntryPoint(
+                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/auth/**").permitAll()
                 .requestMatchers("/health").permitAll()

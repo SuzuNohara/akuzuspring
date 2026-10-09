@@ -37,7 +37,16 @@ class JwtPropertiesTest {
     @Test
     @DisplayName("should fail context startup when jwt secret is missing")
     void shouldFailContextStartupWhenJwtSecretIsMissing() {
-        runner.run(context -> assertThat(context).hasFailed());
+        // Sin las variables del sistema: un JWT_SECRET definido en el equipo haria arrancar el
+        // contexto y la prueba dependeria de la maquina donde corre.
+        runner.withInitializer(
+                        context ->
+                                context.getEnvironment()
+                                        .getPropertySources()
+                                        .remove(
+                                                org.springframework.core.env.StandardEnvironment
+                                                        .SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME))
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test

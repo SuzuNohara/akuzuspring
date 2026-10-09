@@ -20,7 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>Nunca escribe en la respuesta: un token ausente o invalido produce «anonimo» y deja seguir la
  * cadena. El 401/403 lo emite el entry point / access-denied handler, en un solo sitio. No declara
- * logger a proposito (R8): asi no puede filtrar el token a ningun log.
+ * registrador a proposito (R8): asi no puede filtrar el token a ninguna traza.
  *
  * <p>No lleva {@code @Component} (invariante 2 de nexus-AUTH-06): se instancia en
  * {@code SecurityConfig}. Como {@code @Component}, Spring Boot lo registraria tambien a nivel de

@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
  * pareja acunado en el login seguiria autorizando el acceso a los datos del ex-partner durante toda
  * la vida del token.
  *
- * <p>Esta clase no declara logger a proposito: no puede filtrar el secreto a ningun log.
+ * <p>Esta clase no declara registrador a proposito: no puede filtrar el secreto a ninguna traza.
  */
 @Service
 public class JwtService {

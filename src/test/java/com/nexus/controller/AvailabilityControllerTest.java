@@ -15,8 +15,11 @@ import com.nexus.dto.AvailabilityScheduleDTO;
 import com.nexus.entity.AvailabilitySchedule;
 import com.nexus.entity.User;
 import com.nexus.repository.UserRepository;
+import com.nexus.security.AuthenticatedUser;
+import com.nexus.security.JwtService;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +60,18 @@ class AvailabilityControllerTest {
 
     @MockBean private UserRepository userRepository;
 
+    @MockBean private JwtService jwtService;
+
+    /**
+     * Con la cadena cerrada (nexus-AUTH-02), {@code PUT /availability/schedule} exige token. El
+     * principal {@code 4L} coincide con {@link #USER_ID}, asi que el test sigue siendo verdad cuando
+     * llegue nexus-AUTH-03.
+     */
+    @BeforeEach
+    void authenticateAsUser() {
+        given(jwtService.verify("tok")).willReturn(Optional.of(new AuthenticatedUser(USER_ID, "a@b.co")));
+    }
+
     @Test
     @DisplayName("should return 400 with the day and not touch the service when a day is repeated")
     void shouldReturn400WithTheDayAndNotTouchTheServiceWhenADayIsRepeated() throws Exception {
@@ -66,6 +81,7 @@ class AvailabilityControllerTest {
         // When / Then: 400 con el dia repetido en el cuerpo
         mockMvc.perform(
                         put(SCHEDULE_PATH)
+                                .header("Authorization", "Bearer tok")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(DUPLICATE_DAY_BODY))
                 .andExpect(status().isBadRequest())
@@ -86,6 +102,7 @@ class AvailabilityControllerTest {
         // When / Then: 200
         mockMvc.perform(
                         put(SCHEDULE_PATH)
+                                .header("Authorization", "Bearer tok")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(DISTINCT_DAYS_BODY))
                 .andExpect(status().isOk());

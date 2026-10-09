@@ -1,5 +1,11 @@
 package com.nexus.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nexus.security.JwtAuthenticationFilter;
+import com.nexus.security.JwtService;
+import com.nexus.security.PublicRoutes;
+import com.nexus.security.RestAccessDeniedHandler;
+import com.nexus.security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -10,6 +16,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -24,26 +31,30 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http, CorsConfigurationSource corsConfigurationSource) throws Exception {
+            HttpSecurity http,
+            CorsConfigurationSource corsConfigurationSource,
+            JwtService jwtService,
+            ObjectMapper objectMapper)
+            throws Exception {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .csrf(csrf -> csrf.disable())
-            .sessionManagement(session -> 
+            .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(new RestAuthenticationEntryPoint(objectMapper))
+                .accessDeniedHandler(new RestAccessDeniedHandler(objectMapper))
+            )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**").permitAll()
-                .requestMatchers("/profile/**").permitAll()
-                .requestMatchers("/link/**").permitAll()
-                .requestMatchers("/preferences/**").permitAll()
-                .requestMatchers("/events/**").permitAll()
-                .requestMatchers("/calendars/**").permitAll()
-                .requestMatchers("/availability/**").permitAll()
-                .requestMatchers("/health").permitAll()
-                .requestMatchers("/error").permitAll()
+                .requestMatchers(PublicRoutes.PATTERNS).permitAll()
                 .anyRequest().authenticated()
+            )
+            .addFilterBefore(
+                new JwtAuthenticationFilter(jwtService),
+                UsernamePasswordAuthenticationFilter.class
             );
-        
+
         return http.build();
     }
     

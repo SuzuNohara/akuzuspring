@@ -1,5 +1,7 @@
 package com.nexus.security;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -7,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Optional;
 import javax.crypto.SecretKey;
 import org.springframework.stereotype.Service;
 
@@ -70,5 +73,33 @@ public class JwtService {
                         .signWith(signingKey, Jwts.SIG.HS256)
                         .compact();
         return new IssuedToken(token, expiresAt);
+    }
+
+    /**
+     * Verifica firma, emisor y caducidad de un token y extrae el principal.
+     *
+     * @param token el JWS compacto recibido en la cabecera {@code Authorization}.
+     * @return el principal, o vacio si el token no es utilizable por cualquier motivo (firma,
+     *     emisor, caducidad, {@code sub} no numerico, estructura, o {@code null}).
+     * @implNote O(n) sobre la longitud del token; sin acceso a base de datos (R6).
+     */
+    public Optional<AuthenticatedUser> verify(String token) {
+        try {
+            Claims claims =
+                    Jwts.parser()
+                            .verifyWith(signingKey)
+                            .requireIssuer(issuer)
+                            .build()
+                            .parseSignedClaims(token)
+                            .getPayload();
+            return Optional.of(
+                    new AuthenticatedUser(
+                            Long.parseLong(claims.getSubject()), claims.get("email", String.class)));
+        } catch (JwtException | IllegalArgumentException | NullPointerException e) {
+            // Silencio deliberado (R8): el token es una credencial viva y no se registra ni su
+            // motivo de rechazo. Cualquier fallo —firma, emisor, caducidad, sub no decimal
+            // (NumberFormatException), estructura o null— se traduce en vacio, nunca en 500.
+            return Optional.empty();
+        }
     }
 }

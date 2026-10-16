@@ -90,6 +90,20 @@ class ProximityFilterTest {
     }
 
     @Test
+    @DisplayName("P2: should measure from the borough center when a borough is chosen (RN-31)")
+    void shouldMeasureFromTheBoroughCenterWhenABoroughIsChosen() {
+        // Centro de Coyoacan (boroughs); puntos al norte a 14.9 y 15.1 km de el.
+        Coordinates center = new Coordinates(19.349861, -99.161975);
+        double kmPerDegree = com.nexus.util.GeoDistance.EARTH_RADIUS_KM * Math.PI / 180;
+        Coordinates inside = new Coordinates(center.lat() + 14.9 / kmPerDegree, center.lon());
+        Coordinates outside = new Coordinates(center.lat() + 15.1 / kmPerDegree, center.lon());
+        List<Spot> spots =
+                List.of(new Spot("dentro", Optional.of(inside)), new Spot("fuera", Optional.of(outside)));
+
+        assertThat(names(filter.filter(spots, Spot::where, List.of(center)))).containsExactly("dentro");
+    }
+
+    @Test
     @DisplayName("should reject a non positive radius and invalid coordinates")
     void shouldRejectANonPositiveRadiusAndInvalidCoordinates() {
         assertThatThrownBy(() -> new ProximityFilter(0)).isInstanceOf(IllegalArgumentException.class);

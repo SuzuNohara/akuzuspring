@@ -1,26 +1,24 @@
 package com.nexus.service;
 
-import com.nexus.nexussync.places.Geo;
+import com.nexus.util.GeoDistance;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
 
 /**
  * RF-36 / RN-31 - Descarta actividades cuyo lugar queda a mas de {@code radiusKm} (15 km por
- * RN-31) de la pareja, con la formula de Haversine (2.4.7; la misma de nexussync, {@link Geo}).
+ * RN-31) de los puntos de referencia, con la formula de Haversine (2.4.7, {@link GeoDistance}).
  *
  * <p>Criterios:
  *
  * <ul>
- *   <li>El lugar debe quedar dentro del radio de <b>cada</b> integrante que compartio ubicacion:
- *       la cita es para los dos, no basta con que le quede cerca a uno.
- *   <li>RN-30: si nadie compartio ubicacion, no se filtra nada (el agente se puede usar sin ese
+ *   <li>Los puntos de referencia son la ubicacion de cada integrante que la compartio ("cerca de
+ *       nosotros") o el centro de la alcaldia elegida. El lugar debe quedar dentro del radio de
+ *       <b>cada</b> punto: la cita es para los dos, no basta con que le quede cerca a uno.
+ *   <li>RN-30: sin puntos de referencia no se filtra nada (el agente se puede usar sin ese
  *       permiso).
  *   <li>Una actividad sin lugar (p. ej. en casa) nunca se descarta.
  * </ul>
- *
- * <p>Pieza independiente a proposito: se conecta al motor de recomendacion (RF-33) cuando se
- * decida cual es, y a datos reales cuando exista el catalogo de lugares con coordenadas.
  */
 public class ProximityFilter {
 
@@ -46,13 +44,14 @@ public class ProximityFilter {
     }
 
     public static double distanceKm(Coordinates a, Coordinates b) {
-        return Geo.haversineKm(a.lat(), a.lon(), b.lat(), b.lon());
+        return GeoDistance.haversineKm(a.lat(), a.lon(), b.lat(), b.lon());
     }
 
     /**
      * @param items candidatos, en el orden en que se quieren conservar
      * @param locator lugar de cada candidato; vacio si no requiere lugar
-     * @param memberLocations ubicaciones que compartieron los integrantes (0, 1 o 2)
+     * @param memberLocations puntos de referencia: ubicaciones compartidas (0, 1 o 2) o el centro de
+     *     la alcaldia elegida
      * @return los candidatos que cumplen RN-31, en el mismo orden
      */
     public <T> List<T> filter(

@@ -45,10 +45,10 @@ public class IdeaService {
         if (category.isEmpty()) {
             return activityRepository.findAllByOrderByTitleAsc();
         }
-        if (category.get() == IdeaCategory.OTRAS) {
-            // OTRAS tambien recoge tipos que ninguna categoria conoce, asi que no basta un IN.
+        if (category.get() == IdeaCategory.FALLBACK) {
+            // La dimension de respaldo tambien recoge tipos que ninguna conoce: no basta un IN.
             return activityRepository.findAllByOrderByTitleAsc().stream()
-                    .filter(a -> IdeaCategory.ofActivityType(a.getActivityType()) == IdeaCategory.OTRAS)
+                    .filter(a -> IdeaCategory.ofActivityType(a.getActivityType()) == IdeaCategory.FALLBACK)
                     .toList();
         }
         return activityRepository.findByActivityTypeInOrderByTitleAsc(

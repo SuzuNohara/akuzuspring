@@ -74,26 +74,26 @@ class IdeaControllerTest {
                                 IdeaResponse.builder()
                                         .id(1L)
                                         .title("Picnic en el parque")
-                                        .category("AIRE_LIBRE")
-                                        .categoryLabel("Aire libre")
+                                        .category("AMBIENTAL")
+                                        .categoryLabel("Ambiental")
                                         .build()));
 
         mockMvc.perform(get("/ideas/" + USER_ID).header("Authorization", BEARER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Picnic en el parque"))
-                .andExpect(jsonPath("$[0].categoryLabel").value("Aire libre"));
+                .andExpect(jsonPath("$[0].categoryLabel").value("Ambiental"));
     }
 
     @Test
     @DisplayName("should pass the parsed category to the service")
     void shouldPassTheParsedCategoryToTheService() throws Exception {
         authenticateAs(USER_ID);
-        given(ideaService.listIdeas(USER_ID, Optional.of(IdeaCategory.CULTURA)))
+        given(ideaService.listIdeas(USER_ID, Optional.of(IdeaCategory.SOCIAL)))
                 .willReturn(List.of(IdeaResponse.builder().id(2L).title("Concierto").build()));
 
         mockMvc.perform(
                         get("/ideas/" + USER_ID)
-                                .param("category", "cultura")
+                                .param("category", "social")
                                 .header("Authorization", BEARER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Concierto"));
@@ -140,10 +140,10 @@ class IdeaControllerTest {
     void shouldListTheCategoriesForAnyAuthenticatedUser() throws Exception {
         authenticateAs(USER_ID);
         given(ideaService.listCategories())
-                .willReturn(List.of(IdeaCategoryResponse.builder().code("CULTURA").label("Cultura y espectáculos").build()));
+                .willReturn(List.of(IdeaCategoryResponse.builder().code("SOCIAL").label("Social").build()));
 
         mockMvc.perform(get("/ideas/categories").header("Authorization", BEARER))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].code").value("CULTURA"));
+                .andExpect(jsonPath("$[0].code").value("SOCIAL"));
     }
 }

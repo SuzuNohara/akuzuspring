@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** RF-34 - Categoria del banco de ideas para los filtros de la app. */
+/** RF-34 - Dimension del bienestar (categoria del banco de ideas) para los filtros de la app. */
 @Data
 @Builder
 @NoArgsConstructor

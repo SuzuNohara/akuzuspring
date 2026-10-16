@@ -39,7 +39,7 @@ public class IdeaController {
     }
 
     /**
-     * GET /api/ideas/{userId}?category=CULTURA
+     * GET /api/ideas/{userId}?category=SOCIAL
      */
     @GetMapping("/{userId}")
     public ResponseEntity<List<IdeaResponse>> getIdeas(

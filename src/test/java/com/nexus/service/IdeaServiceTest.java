@@ -54,8 +54,8 @@ class IdeaServiceTest {
     }
 
     @Test
-    @DisplayName("should list every idea, mapped to its friendly category, when no category is given")
-    void shouldListEveryIdeaMappedToItsFriendlyCategoryWhenNoCategoryIsGiven() {
+    @DisplayName("should list every idea, mapped to its wellness dimension, when no category is given")
+    void shouldListEveryIdeaMappedToItsWellnessDimensionWhenNoCategoryIsGiven() {
         given(linkRepository.existsActiveLinkByUserId(USER_ID)).willReturn(true);
         given(activityRepository.findAllByOrderByTitleAsc())
                 .willReturn(
@@ -66,8 +66,8 @@ class IdeaServiceTest {
         List<IdeaResponse> ideas = service.listIdeas(USER_ID, Optional.empty());
 
         assertThat(ideas).extracting(IdeaResponse::getTitle).containsExactly("Cena en casa", "Cine al aire libre");
-        assertThat(ideas.get(0).getCategory()).isEqualTo("COMER_Y_BEBER");
-        assertThat(ideas.get(0).getCategoryLabel()).isEqualTo("Comer y beber");
+        assertThat(ideas.get(0).getCategory()).isEqualTo("EMOCIONAL");
+        assertThat(ideas.get(0).getCategoryLabel()).isEqualTo("Emocional");
         assertThat(ideas.get(0).isAtHome()).isTrue();
         assertThat(ideas.get(1).isAtHome()).isFalse();
     }
@@ -78,28 +78,28 @@ class IdeaServiceTest {
         given(linkRepository.existsActiveLinkByUserId(USER_ID)).willReturn(true);
         given(
                         activityRepository.findByActivityTypeInOrderByTitleAsc(
-                                IdeaCategory.CULTURA.activityTypes()))
-                .willReturn(List.of(activity(2, "Concierto", "CONCERT", "CITY")));
+                                IdeaCategory.INTELECTUAL.activityTypes()))
+                .willReturn(List.of(activity(2, "Museo", "EXHIBITION_VISIT", "CITY")));
 
-        List<IdeaResponse> ideas = service.listIdeas(USER_ID, Optional.of(IdeaCategory.CULTURA));
+        List<IdeaResponse> ideas = service.listIdeas(USER_ID, Optional.of(IdeaCategory.INTELECTUAL));
 
-        assertThat(ideas).singleElement().satisfies(i -> assertThat(i.getCategory()).isEqualTo("CULTURA"));
+        assertThat(ideas).singleElement().satisfies(i -> assertThat(i.getCategory()).isEqualTo("INTELECTUAL"));
     }
 
     @Test
-    @DisplayName("should put unknown activity types in OTRAS when listing OTRAS")
-    void shouldPutUnknownActivityTypesInOtrasWhenListingOtras() {
+    @DisplayName("should put OTHER and unknown activity types in SOCIAL when listing SOCIAL")
+    void shouldPutOtherAndUnknownActivityTypesInSocialWhenListingSocial() {
         given(linkRepository.existsActiveLinkByUserId(USER_ID)).willReturn(true);
         given(activityRepository.findAllByOrderByTitleAsc())
                 .willReturn(
                         List.of(
                                 activity(1, "Karaoke", "KARAOKE_NUEVO", "CITY"),
-                                activity(2, "Compras", "SHOPPING", "CITY"),
+                                activity(2, "Karaoke en casa", "OTHER", "HOME"),
                                 activity(3, "Cena", "DINNER", "HOME")));
 
-        List<IdeaResponse> ideas = service.listIdeas(USER_ID, Optional.of(IdeaCategory.OTRAS));
+        List<IdeaResponse> ideas = service.listIdeas(USER_ID, Optional.of(IdeaCategory.SOCIAL));
 
-        assertThat(ideas).extracting(IdeaResponse::getTitle).containsExactly("Karaoke", "Compras");
+        assertThat(ideas).extracting(IdeaResponse::getTitle).containsExactly("Karaoke", "Karaoke en casa");
     }
 
     @Test
@@ -108,8 +108,8 @@ class IdeaServiceTest {
         assertThat(service.listCategories())
                 .extracting(c -> c.getCode())
                 .containsExactly(
-                        "COMER_Y_BEBER", "CULTURA", "AIRE_LIBRE", "DEPORTE", "APRENDER",
-                        "JUEGOS_Y_RELAX", "OTRAS");
-        assertThat(service.listCategories().get(0).getLabel()).isEqualTo("Comer y beber");
+                        "FISICO", "EMOCIONAL", "SOCIAL", "INTELECTUAL", "PROFESIONAL", "AMBIENTAL",
+                        "ESPIRITUAL");
+        assertThat(service.listCategories().get(0).getLabel()).isEqualTo("Físico");
     }
 }

@@ -18,6 +18,7 @@ public final class AgentTestProperties {
                 "activities",
                 Duration.ofMillis(300),
                 40,
+                true,
                 true);
     }
 }

@@ -185,4 +185,34 @@ class EmotionServiceTest {
         assertThat(history.get(1).getId()).isEqualTo(1L);
         assertThat(history.get(1).getLabel()).isEqualTo("Triste");
     }
+
+    @Test
+    @DisplayName("should average the decrypted logs of the last days up to now (C1)")
+    void shouldAverageTheDecryptedLogsOfTheLastDaysUpToNow() {
+        EmotionLog a = EmotionLog.builder().id(1L).encryptedPayload("C-1").build();
+        EmotionLog b = EmotionLog.builder().id(2L).encryptedPayload("C-2").build();
+        // 7 dias antes del 6 de octubre (CDMX) a las 00:00, hasta el instante actual.
+        Instant from = Instant.parse("2026-09-29T06:00:00Z");
+        given(emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(USER_ID, from, NOW_CDMX_LATE_NIGHT))
+                .willReturn(List.of(a, b));
+        given(aesEncryptionService.decrypt("C-1")).willReturn("{\"valence\":0.8,\"activation\":-0.2,\"label\":null}");
+        given(aesEncryptionService.decrypt("C-2")).willReturn("{\"valence\":0.2,\"activation\":-0.6,\"label\":null}");
+
+        Optional<EmotionService.MoodAverage> average = service.averageLastDays(USER_ID, 7);
+
+        assertThat(average).isPresent();
+        assertThat(average.get().valence()).isCloseTo(0.5, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(average.get().activation()).isCloseTo(-0.4, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(average.get().samples()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("should have no average without logs in the period (C2)")
+    void shouldHaveNoAverageWithoutLogsInThePeriod() {
+        given(emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                        eq(USER_ID), any(Instant.class), any(Instant.class)))
+                .willReturn(List.of());
+
+        assertThat(service.averageLastDays(USER_ID, 7)).isEmpty();
+    }
 }

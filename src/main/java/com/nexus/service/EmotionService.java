@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,6 +78,32 @@ public class EmotionService {
                             return toResponse(log.getId(), payload, log.getLoggedAt());
                         })
                 .toList();
+    }
+
+    /** Promedio del animo de una persona en un periodo; nunca sale de los servicios (RN-28). */
+    public record MoodAverage(double valence, double activation, int samples) {}
+
+    /**
+     * T-06 U6 - Promedio de valencia y activacion de los registros desde hace {@code days} dias
+     * (a las 00:00 de la CDMX) hasta ahora. Vacio si no hay registros.
+     *
+     * @implNote O(r) con r registros del periodo (a lo mas uno por dia, RN-38).
+     */
+    public Optional<MoodAverage> averageLastDays(Long userId, int days) {
+        Instant from = LocalDate.now(clock).minusDays(days).atStartOfDay(clock.getZone()).toInstant();
+        List<EmotionPayload> logs =
+                emotionLogRepository
+                        .findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(userId, from, clock.instant())
+                        .stream()
+                        .map(log -> fromJson(aesEncryptionService.decrypt(log.getEncryptedPayload())))
+                        .filter(p -> p.valence() != null && p.activation() != null)
+                        .toList();
+        if (logs.isEmpty()) {
+            return Optional.empty();
+        }
+        double valence = logs.stream().mapToDouble(EmotionPayload::valence).average().orElse(0);
+        double activation = logs.stream().mapToDouble(EmotionPayload::activation).average().orElse(0);
+        return Optional.of(new MoodAverage(valence, activation, logs.size()));
     }
 
     private EmotionLogResponse toResponse(Long id, EmotionPayload payload, Instant loggedAt) {

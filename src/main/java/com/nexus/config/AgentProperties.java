@@ -23,6 +23,8 @@ import org.springframework.validation.annotation.Validated;
  *     (CU40 FA02) para no pasar de los 10 s de RNF-12
  * @param candidatePool cuantas candidatas se piden a Qdrant antes de filtrar por proximidad
  * @param indexOnStartup si al arrancar se reindexa el catalogo cuando no coincide con Qdrant
+ * @param enabled si las recomendaciones usan el agente (busqueda en Qdrant y frases de Mistral);
+ *     apagado, todo sale del catalogo de MySQL
  */
 @Validated
 @ConfigurationProperties(prefix = "nexus.agent")
@@ -34,4 +36,5 @@ public record AgentProperties(
         @NotBlank String collection,
         @NotNull Duration llmTimeout,
         @Positive int candidatePool,
-        boolean indexOnStartup) {}
+        boolean indexOnStartup,
+        boolean enabled) {}

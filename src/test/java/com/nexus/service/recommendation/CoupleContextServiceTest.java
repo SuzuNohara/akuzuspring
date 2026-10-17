@@ -13,6 +13,9 @@ import com.nexus.repository.UserPreferenceRepository;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import com.nexus.service.EmotionService;
+import java.util.Optional;
+import static org.mockito.ArgumentMatchers.anyLong;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -23,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CoupleContextServiceTest {
 
     @Mock private UserPreferenceRepository preferences;
+    @Mock private EmotionService emotions;
     @InjectMocks private CoupleContextService service;
 
     private static UserPreference pick(String category, String name) {
@@ -60,5 +64,32 @@ class CoupleContextServiceTest {
         when(preferences.findByUserId(2L)).thenReturn(List.of());
 
         assertThat(service.build(1L, link()).dimensionWeights()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("C4: combina el animo de los dos en un solo nivel por eje, sin datos por persona")
+    void combinesBothMoodsIntoOneLevel() {
+        when(preferences.findByUserId(anyLong())).thenReturn(List.of());
+        when(emotions.averageLastDays(1L, 7)).thenReturn(Optional.of(new EmotionService.MoodAverage(0.6, -0.5, 3)));
+        when(emotions.averageLastDays(2L, 7)).thenReturn(Optional.of(new EmotionService.MoodAverage(0.4, -0.7, 2)));
+
+        CoupleContext ctx = service.build(1L, link());
+
+        assertThat(ctx.coupleValence()).isEqualTo(MoodLevel.ALTO);
+        assertThat(ctx.coupleEnergy()).isEqualTo(MoodLevel.BAJO);
+    }
+
+    @Test
+    @DisplayName("C4: con datos de uno solo usa ese; sin datos de nadie queda SIN_DATO")
+    void usesWhoeverHasData() {
+        when(preferences.findByUserId(anyLong())).thenReturn(List.of());
+        when(emotions.averageLastDays(1L, 7)).thenReturn(Optional.of(new EmotionService.MoodAverage(0.1, 0.0, 1)));
+        when(emotions.averageLastDays(2L, 7)).thenReturn(Optional.empty());
+
+        CoupleContext ctx = service.build(1L, link());
+        assertThat(ctx.coupleValence()).isEqualTo(MoodLevel.MEDIO);
+
+        when(emotions.averageLastDays(1L, 7)).thenReturn(Optional.empty());
+        assertThat(service.build(1L, link()).coupleEnergy()).isEqualTo(MoodLevel.SIN_DATO);
     }
 }

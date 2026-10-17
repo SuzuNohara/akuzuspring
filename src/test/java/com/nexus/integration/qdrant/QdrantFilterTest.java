@@ -22,8 +22,8 @@ class QdrantFilterTest {
         QdrantFilter filter =
                 new QdrantFilter(
                         Set.of("CITY"),
-                        new LinkedHashSet<>(List.of("FREE", "LOW")),
-                        Set.of("DINNER"),
+                        800,
+                        Set.of("EMOCIONAL"),
                         "NIGHT",
                         120,
                         new LinkedHashSet<>(List.of(7L, 9L)));
@@ -33,9 +33,9 @@ class QdrantFilterTest {
         JSONAssert.assertEquals(
                 "{\"must\":["
                         + "{\"key\":\"location_scope\",\"match\":{\"any\":[\"CITY\"]}},"
-                        + "{\"key\":\"price_band\",\"match\":{\"any\":[\"FREE\",\"LOW\"]}},"
-                        + "{\"key\":\"activity_type\",\"match\":{\"any\":[\"DINNER\"]}},"
-                        + "{\"key\":\"dayparts\",\"match\":{\"value\":\"NIGHT\"}},"
+                        + "{\"key\":\"cost_mxn_pp\",\"range\":{\"lte\":800}},"
+                        + "{\"key\":\"dimension\",\"match\":{\"any\":[\"EMOCIONAL\"]}},"
+                        + "{\"key\":\"dayparts\",\"match\":{\"any\":[\"NIGHT\",\"ANY\"]}},"
                         + "{\"key\":\"duration_min\",\"range\":{\"lte\":120}}],"
                         + "\"must_not\":[{\"has_id\":[7,9]}]}",
                 json,
@@ -45,7 +45,7 @@ class QdrantFilterTest {
     @Test
     @DisplayName("Q3: should omit the conditions that are null or empty")
     void shouldOmitTheConditionsThatAreNullOrEmpty() throws Exception {
-        QdrantFilter filter = new QdrantFilter(Set.of("HOME"), Set.of(), null, null, null, Set.of());
+        QdrantFilter filter = new QdrantFilter(Set.of("HOME"), null, Set.of(), null, null, Set.of());
 
         String json = mapper.writeValueAsString(filter.toJson());
 

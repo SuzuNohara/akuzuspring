@@ -15,7 +15,7 @@ import org.hibernate.annotations.Immutable;
  * nexus-IDEAS-01; atributos de la seccion 3.10.2 del documento tecnico).
  *
  * <p>Solo lectura desde la app: el catalogo se carga con scripts de datos, nunca desde la API.
- * Se mapean unicamente las columnas que usa el banco de ideas.
+ * Se mapean unicamente las columnas que usan el banco de ideas y las recomendaciones.
  */
 @Entity
 @Immutable
@@ -44,8 +44,20 @@ public class Activity {
     @Column(name = "location_scope", nullable = false)
     private String locationScope;
 
+    /** Lo minimo que dura; decide si cabe en la franja libre de la pareja. */
+    @Column(name = "duration_min", nullable = false)
+    private Integer durationMin;
+
     @Column(name = "duration_avg", nullable = false)
     private Integer durationAvg;
+
+    /** {@code MORNING}, {@code AFTERNOON}, {@code NIGHT} separados por {@code |}, o {@code ANY}. */
+    @Column(nullable = false)
+    private String dayparts;
+
+    /** Por que le conviene a una pareja; frase de respaldo cuando no redacta el agente. */
+    @Column(nullable = false)
+    private String rationale;
 
     @Column(name = "cost_mxn_pp", nullable = false)
     private Integer costMxnPp;

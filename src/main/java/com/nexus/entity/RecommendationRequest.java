@@ -1,6 +1,5 @@
 package com.nexus.entity;
 
-import com.nexus.model.BudgetBand;
 import com.nexus.model.RecommendationMode;
 import com.nexus.model.RequestStatus;
 import com.nexus.model.Scope;
@@ -54,10 +53,9 @@ public class RecommendationRequest {
     @Column(nullable = false)
     private Scope scope;
 
-    /** Tope de presupuesto por persona. */
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private BudgetBand budget;
+    /** Tope de presupuesto por persona en pesos, de 0 (solo gratis) a 15 000. */
+    @Column(name = "max_cost_mxn", nullable = false)
+    private Integer maxCostMxn;
 
     /** Nombre de {@link com.nexus.model.IdeaCategory}; {@code null} = cualquiera. */
     private String category;
@@ -68,17 +66,12 @@ public class RecommendationRequest {
     @Column(name = "slot_end", nullable = false)
     private Instant slotEnd;
 
-    /** RN-39: busquedas hechas, de 1 a 3. */
-    @Builder.Default
-    @Column(name = "rounds_used", nullable = false)
-    private Integer roundsUsed = 1;
-
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RequestStatus status = RequestStatus.OPEN;
 
-    /** Bloqueo optimista: dos "buscar otras" simultaneos no pueden pasar los dos (R15). */
+    /** Bloqueo optimista: dos "buscar mas opciones" simultaneos no pueden pasar los dos (R15). */
     @Version
     private Integer version;
 

@@ -111,7 +111,7 @@ public class CatalogCandidateSource implements CandidateSource {
     }
 
     /** Lugar mas cercano a 15 km o menos de todas las referencias; sin referencias, el primero. */
-    private static Optional<PlaceChoice> nearestValidPlace(List<ActivityPlaceView> options, List<Coordinates> references) {
+    static Optional<PlaceChoice> nearestValidPlace(List<ActivityPlaceView> options, List<Coordinates> references) {
         if (references.isEmpty()) {
             return options.stream().findFirst().map(p -> choice(p, null));
         }

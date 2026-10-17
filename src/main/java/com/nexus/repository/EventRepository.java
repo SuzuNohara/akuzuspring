@@ -53,6 +53,20 @@ public interface EventRepository extends JpaRepository<Event, Long> {
                                          @Param("startDate") Instant startDate,
                                          @Param("endDate") Instant endDate);
     
+    // Eventos recurrentes confirmados del usuario que empezaron antes del fin del rango
+    // (sus ocurrencias pueden caer en el rango aunque el evento base no)
+    @Query("SELECT DISTINCT e FROM Event e " +
+           "LEFT JOIN FETCH e.link l " +
+           "LEFT JOIN FETCH l.initiatorUser " +
+           "LEFT JOIN FETCH l.partnerUser " +
+           "LEFT JOIN FETCH e.creator " +
+           "WHERE e.deletedAt IS NULL AND e.isRecurring = true AND e.status = 'CONFIRMED' AND " +
+           "e.startDateTime <= :endDate AND " +
+           "(e.creator.id = :userId OR " +
+           "(e.link.initiatorUser.id = :userId OR e.link.partnerUser.id = :userId))")
+    List<Event> findRecurringByUserIdStartingBefore(@Param("userId") Long userId,
+                                                    @Param("endDate") Instant endDate);
+
     // Buscar eventos pendientes de aprobación por usuario
     @Query("SELECT DISTINCT e FROM Event e " +
            "LEFT JOIN FETCH e.link l " +

@@ -4,12 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 import com.nexus.entity.AvailabilitySchedule;
+import com.nexus.entity.Event;
+import com.nexus.entity.EventStatus;
 import com.nexus.entity.ExternalCalendar;
 import com.nexus.entity.ExternalEvent;
 import com.nexus.repository.AvailabilityScheduleRepository;
+import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
@@ -42,6 +46,7 @@ class AvailabilityServiceTest {
     @Mock private EventRepository events;
     @Mock private ExternalCalendarRepository calendars;
     @Mock private ExternalEventRepository externalEvents;
+    @Mock private EventExceptionRepository eventExceptions;
     @InjectMocks private AvailabilityService service;
 
     private final LocalDate today = LocalDate.now(CDMX);
@@ -54,6 +59,7 @@ class AvailabilityServiceTest {
                 .toList();
         when(schedules.findEnabledByUserId(USER)).thenReturn(everyDay);
         when(events.findByUserIdAndDateRange(eq(USER), any(), any())).thenReturn(List.of());
+        lenient().when(events.findRecurringByUserIdStartingBefore(eq(USER), any())).thenReturn(List.of());
         ExternalCalendar calendar = new ExternalCalendar();
         calendar.setId(1L);
         when(calendars.findByUserId(USER)).thenReturn(List.of(calendar));
@@ -108,5 +114,53 @@ class AvailabilityServiceTest {
 
         assertThat(freeSlotsOn(today)).containsExactly(Map.of("start", "09:00", "end", "22:00"));
         assertThat(freeSlotsOn(tomorrow)).containsExactly(Map.of("start", "09:00", "end", "22:00"));
+    }
+
+    private static Event appEvent(long id, String title, Instant start, Instant end, String pattern) {
+        Event e = new Event();
+        e.setId(id);
+        e.setTitle(title);
+        e.setStartDateTime(start);
+        e.setEndDateTime(end);
+        e.setStatus(EventStatus.CONFIRMED);
+        e.setIsRecurring(pattern != null);
+        e.setRecurrencePattern(pattern);
+        return e;
+    }
+
+    /** Asi guarda la app una excepcion: la fecha local de la ocurrencia a medianoche UTC. */
+    private static Instant exceptionFor(LocalDate day) {
+        return day.atStartOfDay(ZoneId.of("UTC")).toInstant();
+    }
+
+    @Test
+    @DisplayName("un evento diario de la app que empezo antes ocupa cada dia y respeta sus excepciones")
+    void recurringAppEventOccupiesEachOccurrence() {
+        LocalDate firstDay = today.minusWeeks(2);
+        LocalDate skipped = today.plusDays(2);
+        when(events.findRecurringByUserIdStartingBefore(eq(USER), any())).thenReturn(List.of(
+                appEvent(7L, "Gimnasio", at(firstDay, 10), at(firstDay, 12), "DAILY")));
+        when(eventExceptions.findExceptionDatesByEventId(7L)).thenReturn(List.of(exceptionFor(skipped)));
+        when(externalEvents.findEventsByCalendarsAndDateRange(anyList(), any(), any())).thenReturn(List.of());
+
+        assertThat(freeSlotsOn(today.plusDays(1))).containsExactly(
+                Map.of("start", "09:00", "end", "10:00"), Map.of("start", "12:00", "end", "22:00"));
+        assertThat(freeSlotsOn(skipped)).containsExactly(Map.of("start", "09:00", "end", "22:00"));
+    }
+
+    @Test
+    @DisplayName("un evento de la app con RRULE semanal solo ocupa los dias de su BYDAY")
+    void recurringAppEventHonorsByDay() {
+        LocalDate target = today.plusDays(3);
+        String byDay = target.getDayOfWeek().name().substring(0, 2);
+        LocalDate firstDay = target.minusWeeks(3);
+        when(events.findRecurringByUserIdStartingBefore(eq(USER), any())).thenReturn(List.of(
+                appEvent(8L, "Clase", at(firstDay, 18), at(firstDay, 20), "FREQ=WEEKLY;BYDAY=" + byDay)));
+        when(eventExceptions.findExceptionDatesByEventId(8L)).thenReturn(List.of());
+        when(externalEvents.findEventsByCalendarsAndDateRange(anyList(), any(), any())).thenReturn(List.of());
+
+        assertThat(freeSlotsOn(target)).containsExactly(
+                Map.of("start", "09:00", "end", "18:00"), Map.of("start", "20:00", "end", "22:00"));
+        assertThat(freeSlotsOn(today.plusDays(4))).containsExactly(Map.of("start", "09:00", "end", "22:00"));
     }
 }

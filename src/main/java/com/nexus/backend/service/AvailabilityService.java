@@ -6,6 +6,7 @@ import com.nexus.entity.Event;
 import com.nexus.entity.ExternalCalendar;
 import com.nexus.entity.ExternalEvent;
 import com.nexus.repository.AvailabilityScheduleRepository;
+import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
@@ -32,6 +33,9 @@ public class AvailabilityService {
     @Autowired
     private ExternalEventRepository externalEventRepository;
 
+    @Autowired
+    private EventExceptionRepository eventExceptionRepository;
+
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ZoneId MEXICO_ZONE = ZoneId.of("America/Mexico_City");
 
@@ -57,9 +61,14 @@ public class AvailabilityService {
 
         // Obtener eventos de la app del usuario (solo CONFIRMADOS)
         List<Event> appEvents = eventRepository.findByUserIdAndDateRange(userId, rangeStart, rangeEnd);
+        // Los recurrentes se toman aparte: el evento base puede haber empezado antes del rango
         List<Event> confirmedAppEvents = appEvents.stream()
             .filter(e -> e.getStatus() == com.nexus.entity.EventStatus.CONFIRMED)
+            .filter(e -> !Boolean.TRUE.equals(e.getIsRecurring()))
             .collect(Collectors.toList());
+        for (Event recurring : eventRepository.findRecurringByUserIdStartingBefore(userId, rangeEnd)) {
+            confirmedAppEvents.addAll(expandRecurringAppEvent(recurring, rangeStart, rangeEnd));
+        }
 
         // Obtener eventos externos (personales) del usuario
         List<ExternalCalendar> allCalendars = externalCalendarRepository.findByUserId(userId);
@@ -620,6 +629,39 @@ public class AvailabilityService {
         return occurrences;
     }
     
+    /**
+     * Ocurrencias de un evento recurrente de la app dentro del rango, sin las fechas de excepcion.
+     * La app guarda cada excepcion como la fecha local de la ocurrencia a medianoche UTC.
+     */
+    private List<Event> expandRecurringAppEvent(Event base, Instant rangeStart, Instant rangeEnd) {
+        Set<LocalDate> skipped = eventExceptionRepository.findExceptionDatesByEventId(base.getId()).stream()
+            .map(d -> d.atZone(ZoneOffset.UTC).toLocalDate())
+            .collect(Collectors.toSet());
+        Duration duration = Duration.between(base.getStartDateTime(), base.getEndDateTime());
+
+        List<Event> occurrences = new ArrayList<>();
+        for (Instant start : RecurrenceExpander.occurrences(base.getStartDateTime(),
+                toRrule(base.getRecurrencePattern()), null, null,
+                rangeStart.minus(duration), rangeEnd, MEXICO_ZONE)) {
+            if (skipped.contains(LocalDate.ofInstant(start, MEXICO_ZONE))) continue;
+            occurrences.add(Event.builder()
+                .id(base.getId())
+                .title(base.getTitle())
+                .startDateTime(start)
+                .endDateTime(start.plus(duration))
+                .status(base.getStatus())
+                .isRecurring(false)
+                .build());
+        }
+        return occurrences;
+    }
+
+    /** La app guarda "DAILY"/"WEEKLY"/"MONTHLY" o una RRULE completa. */
+    private static String toRrule(String pattern) {
+        if (pattern == null || pattern.isBlank()) return "FREQ=DAILY";
+        return pattern.contains("FREQ=") ? pattern : "FREQ=" + pattern.trim().toUpperCase();
+    }
+
     /**
      * Crea una ocurrencia individual de un evento recurrente
      */

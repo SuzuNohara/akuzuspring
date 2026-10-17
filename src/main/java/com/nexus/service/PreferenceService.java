@@ -9,7 +9,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -95,7 +98,9 @@ public class PreferenceService {
     }
     
     /**
-     * Guardar preferencias del usuario
+     * Guardar preferencias del usuario. Cada dimension que viene en la solicitud queda exactamente
+     * con lo elegido: lo que estaba guardado en esa dimension y ya no viene se borra. Las demas
+     * dimensiones no se tocan (el cuestionario guarda un paso a la vez).
      */
     @Transactional
     public void saveUserPreferences(Long userId, List<UserPreferenceRequest> preferences) {
@@ -109,11 +114,26 @@ public class PreferenceService {
         
         User user = userRepository.findById(userId).get();
         
-        // Guardar cada preferencia
+        Map<Long, Preference> chosen = new LinkedHashMap<>();
         for (UserPreferenceRequest req : preferences) {
             Preference preference = preferenceRepository.findById(req.getPreferenceId())
                     .orElseThrow(() -> new BadRequestException("Preferencia no encontrada: " + req.getPreferenceId()));
-            
+            chosen.put(preference.getId(), preference);
+        }
+        
+        Set<Long> touchedCategories = chosen.values().stream()
+                .map(p -> p.getCategory().getId())
+                .collect(Collectors.toSet());
+        List<UserPreference> unchecked = userPreferenceRepository.findByUserId(userId).stream()
+                .filter(up -> touchedCategories.contains(up.getPreference().getCategory().getId()))
+                .filter(up -> !chosen.containsKey(up.getPreference().getId()))
+                .collect(Collectors.toList());
+        if (!unchecked.isEmpty()) {
+            userPreferenceRepository.deleteAll(unchecked);
+        }
+        
+        for (UserPreferenceRequest req : preferences) {
+            Preference preference = chosen.get(req.getPreferenceId());
             UserPreferenceId id = new UserPreferenceId(userId, req.getPreferenceId());
             
             // Buscar si ya existe

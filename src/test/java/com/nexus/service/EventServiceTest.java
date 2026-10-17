@@ -104,6 +104,23 @@ class EventServiceTest {
     }
 
     @Test
+    @DisplayName("should keep the recommended activity of the event, and none for a normal event (A21)")
+    void shouldKeepTheRecommendedActivityOfTheEvent() {
+        given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));
+        given(linkRepository.findActiveLinkByUserId(CREATOR_ID)).willReturn(Optional.of(link));
+        givenSaveReturnsTheSameEvent();
+        CreateEventRequest fromRecommendation = tomorrowForTwoHours();
+        fromRecommendation.setActivityId(42L);
+
+        service.createEvent(CREATOR_ID, fromRecommendation);
+        service.createEvent(CREATOR_ID, tomorrowForTwoHours());
+
+        ArgumentCaptor<Event> saved = ArgumentCaptor.forClass(Event.class);
+        verify(eventRepository, org.mockito.Mockito.times(2)).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(Event::getActivityId).containsExactly(42L, null);
+    }
+
+    @Test
     @DisplayName("should reject an event that starts in the past")
     void shouldRejectAnEventThatStartsInThePast() {
         given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));

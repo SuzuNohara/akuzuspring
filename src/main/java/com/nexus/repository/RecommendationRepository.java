@@ -8,6 +8,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface RecommendationRepository extends JpaRepository<Recommendation, Long> {
 
-    /** Todo lo mostrado en una solicitud, en todas sus busquedas (RN-39: no repetir). */
-    List<Recommendation> findByRequestId(Long requestId);
+    /** Las 15 opciones guardadas de una solicitud, en el orden en que se muestran. */
+    List<Recommendation> findByRequestIdOrderByPositionAsc(Long requestId);
 }

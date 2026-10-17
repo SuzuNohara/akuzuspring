@@ -93,7 +93,11 @@ public class Event {
     
     @Column(name = "color", length = 7)
     private String color; // Formato hex: #FF4F81
-    
+
+    /** Actividad del catalogo si la cita salio de una recomendacion (RF-40); null en otro caso. */
+    @Column(name = "activity_id")
+    private Long activityId;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -43,4 +43,5 @@ public class CreateEventRequest {
     private String color;
     private Integer reminderMinutes; // Compatibilidad con API anterior
     private List<ReminderDTO> reminders; // Nuevo: múltiples recordatorios
+    private Long activityId; // Solo si la cita sale de una recomendacion (RF-40)
 }

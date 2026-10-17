@@ -87,6 +87,7 @@ public class EventService {
             .recurrencePattern(request.getRecurrencePattern())
             .color(request.getColor())
             .reminderMinutes(request.getReminderMinutes())
+            .activityId(request.getActivityId())
             .build();
         
         // 5. Guardar el evento

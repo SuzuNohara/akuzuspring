@@ -4,6 +4,7 @@ import com.nexus.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,6 +52,39 @@ public class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.FORBIDDEN)
             .body(errorResponse);
+    }
+
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflictException(
+            ConflictException ex,
+            WebRequest request) {
+        log.warn("ConflictException: {}", ex.getMessage());
+        return error(HttpStatus.CONFLICT, "Conflict", ex.getMessage(), request);
+    }
+
+    /** Dos peticiones a la vez sobre la misma solicitud de recomendaciones (R15). */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(
+            ObjectOptimisticLockingFailureException ex,
+            WebRequest request) {
+        log.warn("Conflicto de concurrencia: {}", ex.getMessage());
+        return error(HttpStatus.CONFLICT, "Conflict", "Otra accion cambio esta solicitud. Intenta de nuevo.", request);
+    }
+
+    @ExceptionHandler(AgentUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleAgentUnavailable(
+            AgentUnavailableException ex,
+            WebRequest request) {
+        log.error("AgentUnavailableException: {}", ex.getMessage());
+        return error(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable",
+            "No pudimos buscar planes en este momento. Intenta de nuevo.", request);
+    }
+
+    private static ResponseEntity<ErrorResponse> error(
+            HttpStatus status, String reason, String message, WebRequest request) {
+        ErrorResponse body = new ErrorResponse(
+            status.value(), reason, message, request.getDescription(false).replace("uri=", ""));
+        return ResponseEntity.status(status).body(body);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

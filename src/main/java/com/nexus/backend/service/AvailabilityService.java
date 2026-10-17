@@ -96,8 +96,14 @@ public class AvailabilityService {
                     " | starts_at: " + evt.getStartDatetime());
             }
             
+            // Los eventos de todo el dia (cumpleanos, aniversarios) no ocupan tiempo, como en Google
+            // Calendar por defecto. Ademas vienen a las 00:00 UTC y en la CDMX se corrian 6 horas.
+            List<ExternalEvent> timedEvents = baseEvents.stream()
+                .filter(evt -> !Boolean.TRUE.equals(evt.getIsAllDay()))
+                .collect(Collectors.toList());
+
             // Expandir eventos recurrentes
-            externalEvents = expandRecurringEvents(baseEvents, rangeStart, rangeEnd);
+            externalEvents = expandRecurringEvents(timedEvents, rangeStart, rangeEnd);
             
             System.out.println("📆 Eventos externos base: " + baseEvents.size() + ", expandidos: " + externalEvents.size());
         } else {
@@ -593,52 +599,24 @@ public class AvailabilityService {
     ) {
         List<ExternalEvent> occurrences = new ArrayList<>();
         
-        // Parsear la regla de recurrencia (formato iCalendar RRULE)
-        String rrule = baseEvent.getRecurrenceRule();
-        Instant eventStart = baseEvent.getRruleDtstartUtc() != null 
-            ? baseEvent.getRruleDtstartUtc() 
+        Instant eventStart = baseEvent.getRruleDtstartUtc() != null
+            ? baseEvent.getRruleDtstartUtc()
             : baseEvent.getStartDatetime();
-        
-        // Calcular duración del evento
         Duration eventDuration = Duration.between(baseEvent.getStartDatetime(), baseEvent.getEndDatetime());
-        
-        // Detectar frecuencia de la regla
-        String freq = extractRRuleParam(rrule, "FREQ");
-        Integer count = baseEvent.getRruleCount();
-        Instant until = baseEvent.getRruleUntilUtc();
-        
-        // Determinar fecha límite
-        Instant limitDate = until != null ? until : rangeEnd;
-        if (count != null) {
-            // Si hay COUNT, limitar a ese número de ocurrencias
-            limitDate = calculateCountLimit(eventStart, freq, count);
+
+        // Se empieza antes del rango para no perder la ocurrencia que cruza su inicio (p. ej. dormir).
+        List<Instant> starts = RecurrenceExpander.occurrences(
+            eventStart,
+            baseEvent.getRecurrenceRule(),
+            baseEvent.getRruleUntilUtc(),
+            baseEvent.getRruleCount(),
+            rangeStart.minus(eventDuration),
+            rangeEnd,
+            MEXICO_ZONE
+        );
+        for (Instant start : starts) {
+            occurrences.add(createOccurrence(baseEvent, start, start.plus(eventDuration)));
         }
-        
-        // Generar ocurrencias
-        Instant currentOccurrence = eventStart;
-        int generatedCount = 0;
-        int maxIterations = count != null ? count : 1000; // Límite de seguridad
-        
-        while (currentOccurrence.isBefore(limitDate) && generatedCount < maxIterations) {
-            Instant occurrenceEnd = currentOccurrence.plus(eventDuration);
-            
-            // Solo incluir si está dentro del rango solicitado
-            if (occurrenceEnd.isAfter(rangeStart) && currentOccurrence.isBefore(rangeEnd)) {
-                ExternalEvent occurrence = createOccurrence(baseEvent, currentOccurrence, occurrenceEnd);
-                occurrences.add(occurrence);
-            }
-            
-            generatedCount++;
-            
-            // Avanzar a la siguiente ocurrencia según la frecuencia
-            currentOccurrence = getNextOccurrence(currentOccurrence, freq, rrule);
-            
-            // Si pasamos el rango, salir
-            if (currentOccurrence.isAfter(rangeEnd)) {
-                break;
-            }
-        }
-        
         return occurrences;
     }
     
@@ -662,66 +640,5 @@ public class AvailabilityService {
         occurrence.setStatus(base.getStatus());
         occurrence.setRecurrenceRule(null); // Las ocurrencias no son recurrentes
         return occurrence;
-    }
-    
-    /**
-     * Calcula la siguiente ocurrencia según la frecuencia
-     */
-    private Instant getNextOccurrence(Instant current, String freq, String rrule) {
-        LocalDateTime currentDT = LocalDateTime.ofInstant(current, MEXICO_ZONE);
-        Integer interval = extractRRuleParamInt(rrule, "INTERVAL");
-        int step = interval != null ? interval : 1;
-        
-        LocalDateTime next = switch (freq) {
-            case "DAILY" -> currentDT.plusDays(step);
-            case "WEEKLY" -> currentDT.plusWeeks(step);
-            case "MONTHLY" -> currentDT.plusMonths(step);
-            case "YEARLY" -> currentDT.plusYears(step);
-            default -> currentDT.plusDays(1); // Default a diario
-        };
-        
-        return next.atZone(MEXICO_ZONE).toInstant();
-    }
-    
-    /**
-     * Extrae un parámetro de la regla RRULE
-     */
-    private String extractRRuleParam(String rrule, String param) {
-        if (rrule == null) return null;
-        String[] parts = rrule.split(";");
-        for (String part : parts) {
-            if (part.startsWith(param + "=")) {
-                return part.substring(param.length() + 1);
-            }
-        }
-        return null;
-    }
-    
-    /**
-     * Extrae un parámetro entero de la regla RRULE
-     */
-    private Integer extractRRuleParamInt(String rrule, String param) {
-        String value = extractRRuleParam(rrule, param);
-        if (value == null) return null;
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
-    }
-    
-    /**
-     * Calcula la fecha límite cuando se usa COUNT
-     */
-    private Instant calculateCountLimit(Instant start, String freq, int count) {
-        LocalDateTime startDT = LocalDateTime.ofInstant(start, MEXICO_ZONE);
-        LocalDateTime limit = switch (freq) {
-            case "DAILY" -> startDT.plusDays(count);
-            case "WEEKLY" -> startDT.plusWeeks(count);
-            case "MONTHLY" -> startDT.plusMonths(count);
-            case "YEARLY" -> startDT.plusYears(count);
-            default -> startDT.plusDays(count);
-        };
-        return limit.atZone(MEXICO_ZONE).toInstant();
     }
 }

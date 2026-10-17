@@ -1,6 +1,7 @@
 package com.nexus.model;
 
-/** RF-37 - Modalidad de la solicitud. La conjunta (RF-38) se agrega con la sesion de planeacion. */
+/** RF-37 / RF-38 - Modalidad de la solicitud: individual o dentro de una planeacion en pareja. */
 public enum RecommendationMode {
-    INDIVIDUAL
+    INDIVIDUAL,
+    JOINT
 }

@@ -92,7 +92,7 @@ public class CatalogCandidateSource implements CandidateSource {
         RecommendationQuery q = step.query();
         return (q.scope() == Scope.ANY || q.scope().name().equals(a.getLocationScope()))
                 && a.getCostMxnPp() <= q.maxCostMxn()
-                && (q.category() == null || IdeaCategory.ofActivityType(a.getActivityType()) == q.category())
+                && q.acceptsCategory(IdeaCategory.ofActivityType(a.getActivityType()))
                 && (!step.daypartRequired() || daypart.admits(a.getDayparts()))
                 && a.getDurationMin() <= q.slotMinutes();
     }

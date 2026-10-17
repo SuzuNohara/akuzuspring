@@ -103,6 +103,39 @@ public class RecommendationService {
         return new RecommendationBatch(saved.getId(), visible, relaxed, selection.source().name(), stored.size() > PAGE);
     }
 
+    /**
+     * RF-38 - Opciones para una planeacion en pareja: misma seleccion y guardado que la individual
+     * ({@link #STORED} guardadas, {@link #PAGE} visibles), con varias dimensiones posibles.
+     */
+    @Transactional
+    public RecommendationBatch requestForCouple(Long requesterId, Link link, CoupleCriteria c) {
+        validateSlot(requesterId, partnerOf(link, requesterId), c.slotStart(), c.slotEnd());
+        RecommendationQuery query = new RecommendationQuery(
+                c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references());
+        CoupleContext context = contexts.build(requesterId, link);
+        Selection selection = candidates.select(query, context, Set.of(), STORED);
+        List<WrittenReason> reasons = writer.write(selection.candidates(), context);
+        RecommendationRequest saved = requests.save(RecommendationRequest.builder()
+                .requester(users.getReferenceById(requesterId))
+                .link(link)
+                .mode(RecommendationMode.JOINT)
+                .zoneType(c.zoneType())
+                .borough(c.borough())
+                .scope(c.scope())
+                .maxCostMxn(c.maxCostMxn())
+                .category(c.categories().isEmpty() ? null
+                        : c.categories().stream().map(Enum::name).sorted().collect(Collectors.joining(",")))
+                .slotStart(c.slotStart())
+                .slotEnd(c.slotEnd())
+                .build());
+        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, selection, reasons));
+        log.info("Planeacion en pareja, solicitud {}: {} opciones ({}), filtros ampliados {}",
+                saved.getId(), stored.size(), selection.source(), selection.relaxed());
+        List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
+        Set<String> relaxed = selection.relaxed().stream().map(Enum::name).collect(Collectors.toSet());
+        return new RecommendationBatch(saved.getId(), visible, relaxed, selection.source().name(), stored.size() > PAGE);
+    }
+
     /** "Buscar mas opciones": las siguientes {@link #PAGE} guardadas que no se han visto. */
     @Transactional
     public RecommendationBatch more(Long userId, Long requestId) {
@@ -270,7 +303,8 @@ public class RecommendationService {
         return out;
     }
 
-    private static RecommendationItem toItem(Recommendation r) {
+    /** Tarjeta de una opcion guardada (la usa tambien la planeacion en pareja). */
+    public static RecommendationItem toItem(Recommendation r) {
         Activity a = r.getActivity();
         IdeaCategory category = IdeaCategory.ofActivityType(a.getActivityType());
         Place place = r.getPlace();
@@ -287,7 +321,8 @@ public class RecommendationService {
         return byDuration.isAfter(request.getSlotEnd()) ? request.getSlotEnd() : byDuration;
     }
 
-    private static CreateEventRequest toEvent(Recommendation rec, RecommendationRequest request) {
+    /** Evento que nace de una opcion (invitacion individual o acuerdo en pareja). */
+    public static CreateEventRequest toEvent(Recommendation rec, RecommendationRequest request) {
         Activity a = rec.getActivity();
         Place place = rec.getPlace();
         return CreateEventRequest.builder()

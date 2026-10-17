@@ -6,18 +6,20 @@ import com.nexus.service.ProximityFilter.Coordinates;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Lo que se busca, solo con valores cerrados (RN-32). Las referencias son los puntos contra los que
  * se mide la distancia (RN-31): la ubicacion de quien pide o el centro de su alcaldia; vacia = sin
  * filtro de distancia. Nunca se guardan (RN-30).
  *
- * @param category dimension del bienestar; {@code null} = cualquiera
+ * @param categories dimensiones del bienestar aceptadas; vacio = cualquiera (en pareja se pueden
+ *     elegir varias)
  */
 public record RecommendationQuery(
         Scope scope,
         int maxCostMxn,
-        IdeaCategory category,
+        Set<IdeaCategory> categories,
         Instant slotStart,
         Instant slotEnd,
         List<Coordinates> references) {
@@ -27,6 +29,18 @@ public record RecommendationQuery(
 
     public RecommendationQuery {
         references = List.copyOf(references);
+        categories = categories == null ? Set.of() : Set.copyOf(categories);
+    }
+
+    /** Modalidad individual: una sola dimensión o {@code null} = cualquiera. */
+    public RecommendationQuery(Scope scope, int maxCostMxn, IdeaCategory category, Instant slotStart, Instant slotEnd,
+                               List<Coordinates> references) {
+        this(scope, maxCostMxn, category == null ? Set.of() : Set.of(category), slotStart, slotEnd, references);
+    }
+
+    /** Si la actividad entra en las dimensiones pedidas. */
+    public boolean acceptsCategory(IdeaCategory category) {
+        return categories.isEmpty() || categories.contains(category);
     }
 
     /** Minutos de la franja libre. */
@@ -34,15 +48,15 @@ public record RecommendationQuery(
         return Duration.between(slotStart, slotEnd).toMinutes();
     }
 
-    RecommendationQuery withCategory(IdeaCategory newCategory) {
-        return new RecommendationQuery(scope, maxCostMxn, newCategory, slotStart, slotEnd, references);
+    RecommendationQuery withAnyCategory() {
+        return new RecommendationQuery(scope, maxCostMxn, Set.<IdeaCategory>of(), slotStart, slotEnd, references);
     }
 
     RecommendationQuery withMaxCost(int newMaxCost) {
-        return new RecommendationQuery(scope, newMaxCost, category, slotStart, slotEnd, references);
+        return new RecommendationQuery(scope, newMaxCost, categories, slotStart, slotEnd, references);
     }
 
     RecommendationQuery withScope(Scope newScope) {
-        return new RecommendationQuery(newScope, maxCostMxn, category, slotStart, slotEnd, references);
+        return new RecommendationQuery(newScope, maxCostMxn, categories, slotStart, slotEnd, references);
     }
 }

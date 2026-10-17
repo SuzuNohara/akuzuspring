@@ -30,10 +30,10 @@ class RelaxationLadderTest {
 
         assertThat(steps.get(0).relaxed()).isEmpty();
         assertThat(steps.get(0).daypartRequired()).isTrue();
-        assertThat(steps.get(0).query().category()).isEqualTo(IdeaCategory.SOCIAL);
+        assertThat(steps.get(0).query().categories()).containsExactly(IdeaCategory.SOCIAL);
 
         assertThat(steps.get(1).relaxed()).containsExactly(RelaxedFilter.CATEGORY);
-        assertThat(steps.get(1).query().category()).isNull();
+        assertThat(steps.get(1).query().categories()).isEmpty();
 
         assertThat(steps.get(2).relaxed()).containsExactlyInAnyOrder(RelaxedFilter.CATEGORY, RelaxedFilter.DAYPART);
         assertThat(steps.get(2).daypartRequired()).isFalse();

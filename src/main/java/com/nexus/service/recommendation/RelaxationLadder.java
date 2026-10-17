@@ -26,8 +26,8 @@ public final class RelaxationLadder {
         List<LadderStep> steps = new ArrayList<>();
         LadderStep current = new LadderStep(q, true, EnumSet.noneOf(RelaxedFilter.class));
         steps.add(current);
-        if (q.category() != null) {
-            current = current.relax(current.query().withCategory(null), true, RelaxedFilter.CATEGORY);
+        if (!q.categories().isEmpty()) {
+            current = current.relax(current.query().withAnyCategory(), true, RelaxedFilter.CATEGORY);
             steps.add(current);
         }
         current = current.relax(current.query(), false, RelaxedFilter.DAYPART);

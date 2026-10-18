@@ -215,4 +215,23 @@ class EmotionServiceTest {
 
         assertThat(service.averageLastDays(USER_ID, 7)).isEmpty();
     }
+
+    @Test
+    @DisplayName("should skip a log that cannot be decrypted instead of failing the recommendation")
+    void shouldSkipALogThatCannotBeDecryptedInsteadOfFailingTheRecommendation() {
+        EmotionLog broken = EmotionLog.builder().id(1L).encryptedPayload("C-ROTO").build();
+        EmotionLog ok = EmotionLog.builder().id(2L).encryptedPayload("C-OK").build();
+        given(emotionLogRepository.findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(
+                        eq(USER_ID), any(Instant.class), any(Instant.class)))
+                .willReturn(List.of(broken, ok));
+        given(aesEncryptionService.decrypt("C-ROTO"))
+                .willThrow(new IllegalStateException("Error al descifrar: dato corrupto o llave incorrecta"));
+        given(aesEncryptionService.decrypt("C-OK")).willReturn("{\"valence\":0.4,\"activation\":0.2,\"label\":null}");
+
+        Optional<EmotionService.MoodAverage> average = service.averageLastDays(USER_ID, 7);
+
+        assertThat(average).isPresent();
+        assertThat(average.get().samples()).isEqualTo(1);
+        assertThat(average.get().valence()).isEqualTo(0.4);
+    }
 }

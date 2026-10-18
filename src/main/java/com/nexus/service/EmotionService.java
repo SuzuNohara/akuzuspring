@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
  * mas que el propio usuario los ve) lo impone {@code EmotionController} vía
  * {@code OwnershipGuard.requireSelf} -- este servicio no conoce a la pareja vinculada en absoluto.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmotionService {
@@ -95,7 +97,8 @@ public class EmotionService {
                 emotionLogRepository
                         .findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(userId, from, clock.instant())
                         .stream()
-                        .map(log -> fromJson(aesEncryptionService.decrypt(log.getEncryptedPayload())))
+                        .map(this::readForAverage)
+                        .flatMap(Optional::stream)
                         .filter(p -> p.valence() != null && p.activation() != null)
                         .toList();
         if (logs.isEmpty()) {
@@ -104,6 +107,19 @@ public class EmotionService {
         double valence = logs.stream().mapToDouble(EmotionPayload::valence).average().orElse(0);
         double activation = logs.stream().mapToDouble(EmotionPayload::activation).average().orElse(0);
         return Optional.of(new MoodAverage(valence, activation, logs.size()));
+    }
+
+    /**
+     * El animo solo ajusta el tono de las recomendaciones: un registro que no se puede descifrar
+     * (p. ej. guardado con otra AES_SECRET) se salta en lugar de tumbar la solicitud.
+     */
+    private Optional<EmotionPayload> readForAverage(EmotionLog entry) {
+        try {
+            return Optional.of(fromJson(aesEncryptionService.decrypt(entry.getEncryptedPayload())));
+        } catch (IllegalStateException e) {
+            log.warn("[T-06] Registro de animo {} ilegible, se omite del promedio: {}", entry.getId(), e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private EmotionLogResponse toResponse(Long id, EmotionPayload payload, Instant loggedAt) {

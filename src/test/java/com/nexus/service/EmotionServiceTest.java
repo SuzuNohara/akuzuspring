@@ -234,4 +234,19 @@ class EmotionServiceTest {
         assertThat(average.get().samples()).isEqualTo(1);
         assertThat(average.get().valence()).isEqualTo(0.4);
     }
+
+    @Test
+    @DisplayName("should leave out of the history a log that cannot be decrypted and show the rest")
+    void shouldLeaveOutOfTheHistoryALogThatCannotBeDecryptedAndShowTheRest() {
+        EmotionLog broken = EmotionLog.builder().id(6L).encryptedPayload("C-ROTO").loggedAt(Instant.parse("2026-10-06T12:00:00Z")).build();
+        EmotionLog ok = EmotionLog.builder().id(7L).encryptedPayload("C-OK").loggedAt(Instant.parse("2026-10-05T12:00:00Z")).build();
+        given(emotionLogRepository.findByUserIdOrderByLoggedAtDesc(USER_ID)).willReturn(List.of(broken, ok));
+        given(aesEncryptionService.decrypt("C-ROTO"))
+                .willThrow(new IllegalStateException("Error al descifrar: dato corrupto o llave incorrecta"));
+        given(aesEncryptionService.decrypt("C-OK")).willReturn("{\"valence\":0.4,\"activation\":0.2,\"label\":\"Tranquilo\"}");
+
+        List<EmotionLogResponse> history = service.getHistory(USER_ID);
+
+        assertThat(history).extracting(EmotionLogResponse::getId).containsExactly(7L);
+    }
 }

@@ -73,12 +73,7 @@ public class EmotionService {
 
     public List<EmotionLogResponse> getHistory(Long userId) {
         return emotionLogRepository.findByUserIdOrderByLoggedAtDesc(userId).stream()
-                .map(
-                        log -> {
-                            EmotionPayload payload =
-                                    fromJson(aesEncryptionService.decrypt(log.getEncryptedPayload()));
-                            return toResponse(log.getId(), payload, log.getLoggedAt());
-                        })
+                .flatMap(entry -> readable(entry).map(p -> toResponse(entry.getId(), p, entry.getLoggedAt())).stream())
                 .toList();
     }
 
@@ -97,7 +92,7 @@ public class EmotionService {
                 emotionLogRepository
                         .findByUserIdAndLoggedAtGreaterThanEqualAndLoggedAtLessThan(userId, from, clock.instant())
                         .stream()
-                        .map(this::readForAverage)
+                        .map(this::readable)
                         .flatMap(Optional::stream)
                         .filter(p -> p.valence() != null && p.activation() != null)
                         .toList();
@@ -110,14 +105,14 @@ public class EmotionService {
     }
 
     /**
-     * El animo solo ajusta el tono de las recomendaciones: un registro que no se puede descifrar
-     * (p. ej. guardado con otra AES_SECRET) se salta en lugar de tumbar la solicitud.
+     * Un registro que no se puede descifrar (p. ej. guardado con otra AES_SECRET) se omite con un
+     * aviso en el log, en lugar de tumbar el historial o la recomendacion: no hay forma de leerlo.
      */
-    private Optional<EmotionPayload> readForAverage(EmotionLog entry) {
+    private Optional<EmotionPayload> readable(EmotionLog entry) {
         try {
             return Optional.of(fromJson(aesEncryptionService.decrypt(entry.getEncryptedPayload())));
         } catch (IllegalStateException e) {
-            log.warn("[T-06] Registro de animo {} ilegible, se omite del promedio: {}", entry.getId(), e.getMessage());
+            log.warn("Registro de animo {} ilegible, se omite: {}", entry.getId(), e.getMessage());
             return Optional.empty();
         }
     }

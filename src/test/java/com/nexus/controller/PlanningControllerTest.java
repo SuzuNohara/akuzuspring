@@ -52,7 +52,7 @@ class PlanningControllerTest {
     private static PlanningView view(String phase) {
         return new PlanningView(50L, "ACTIVE", phase, "INVITER", new PlanningMember(USER_ID, "Ana", true, false),
                 new PlanningMember(13L, "Sam", false, false), Instant.parse("2026-10-18T18:00:00Z"), null, null,
-                List.of(), List.of(), false, Set.of(), false, null, null, null, 0);
+                List.of(), List.of(), false, Set.of(), false, null, null, null, 0, null);
     }
 
     @Test

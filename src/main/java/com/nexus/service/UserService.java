@@ -52,7 +52,8 @@ public class UserService {
         validateRegistrationRequest(request);
         
         // Verificar que el email no esté en uso
-        if (userRepository.existsByEmail(request.getEmail())) {
+        // Se compara como se guarda (minusculas): "Ana@x.com" y "ana@x.com" son el mismo correo.
+        if (userRepository.existsByEmail(request.getEmail().toLowerCase().trim())) {
             throw new BadRequestException("El email ya está registrado");
         }
         

@@ -224,7 +224,112 @@ class PlanningServiceTest {
         service.sweep();
 
         verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Recordatorio"),
-                eq("La invitación de Ana vence en 12 horas."));
+                eq("La invitación de Ana vence en 11 horas."));
+    }
+
+    @Test
+    @DisplayName("un recordatorio que sale tarde dice el tiempo que de verdad queda")
+    void lateReminderSaysRealTime() {
+        PlanningSession s = session(PlanningStatus.ACTIVE);
+        s.setSessionExpiresAt(NOW.plus(Duration.ofMinutes(230)));
+        when(sessions.findByStatusIn(anyList())).thenReturn(List.of(s));
+
+        service.sweep();
+
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("REMINDER"), eq("Quedan 3 h 50 min"), any());
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Quedan 3 h 50 min"), any());
+    }
+
+    // --- cierre con opcion pendiente ---------------------------------------------------------
+
+    private PlanningSession closedWithProposal() {
+        PlanningSession s = withOptions(5);
+        s.setProposalRecommendationId(102L);
+        s.setProposedById(ANA);
+        s.setSessionExpiresAt(NOW.minusSeconds(1));
+        when(sessions.findFirstByLinkIdOrderByIdDesc(LINK)).thenReturn(Optional.of(s));
+        return s;
+    }
+
+    private void like(long recommendationId, long userId) {
+        voteStore.put(new PlanningVote.Key(recommendationId, userId), PlanningVote.builder()
+                .recommendationId(recommendationId).userId(userId).sessionId(SESSION).vote(Vote.LIKE).build());
+    }
+
+    @Test
+    @DisplayName("si se acaba el tiempo con una propuesta, se dice quien no respondio y la opcion se conserva")
+    void closedKeepsProposal() {
+        closedWithProposal();
+
+        PlanningView view = service.current(ANA).orElseThrow();
+
+        assertThat(view.phase()).isEqualTo("CLOSED");
+        assertThat(view.leftover().option().item().title()).isEqualTo("Plan 2");
+        assertThat(view.leftover().kind()).isEqualTo("MY_PROPOSAL");
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
+                eq("Sam no alcanzó a responder tu propuesta."));
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
+                eq("No alcanzaste a responder la propuesta de Ana."));
+    }
+
+    @Test
+    @DisplayName("si coincidieron sin proponer, la opcion en la que coincidieron se conserva")
+    void closedKeepsMatch() {
+        PlanningSession s = withOptions(5);
+        like(103L, ANA);
+        like(103L, SAM);
+        s.setSessionExpiresAt(NOW.minusSeconds(1));
+        when(sessions.findFirstByLinkIdOrderByIdDesc(LINK)).thenReturn(Optional.of(s));
+
+        PlanningView view = service.current(SAM).orElseThrow();
+
+        assertThat(view.leftover().option().item().title()).isEqualTo("Plan 3");
+        assertThat(view.leftover().kind()).isEqualTo("MATCH");
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
+                eq("Coincidieron en \"Plan 3\", pero nadie la propuso."));
+    }
+
+    @Test
+    @DisplayName("sin coincidencias se cierra como antes y no queda opcion")
+    void closedWithoutMatch() {
+        PlanningSession s = withOptions(5);
+        s.setSessionExpiresAt(NOW.minusSeconds(1));
+        when(sessions.findFirstByLinkIdOrderByIdDesc(LINK)).thenReturn(Optional.of(s));
+
+        PlanningView view = service.current(ANA).orElseThrow();
+
+        assertThat(view.leftover()).isNull();
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
+                eq("No llegaron a un acuerdo a tiempo."));
+    }
+
+    @Test
+    @DisplayName("al terminar, la opcion que quedo se puede mandar como invitacion")
+    void inviteLeftover() {
+        closedWithProposal();
+        EventResponse event = new EventResponse();
+        event.setId(77L);
+        CreateEventResponse created = new CreateEventResponse();
+        created.setEvent(event);
+        when(events.createEvent(eq(ANA), any())).thenReturn(created);
+
+        PlanningView view = service.inviteLeftover(ANA, SESSION);
+
+        assertThat(view.eventId()).isEqualTo(77L);
+        assertThat(view.leftover()).isNull();
+        assertThat(stored.get(1).getRequest().getStatus()).isEqualTo(RequestStatus.SENT);
+        assertThatThrownBy(() -> service.inviteLeftover(ANA, SESSION)).isInstanceOf(ConflictException.class);
+    }
+
+    @Test
+    @DisplayName("si el horario de la opcion ya paso, no se puede mandar")
+    void leftoverInThePast() {
+        PlanningSession s = closedWithProposal();
+        stored.get(1).getRequest().setSlotStart(NOW.minus(Duration.ofMinutes(5)));
+
+        assertThatThrownBy(() -> service.inviteLeftover(ANA, SESSION)).isInstanceOf(BadRequestException.class);
+        verify(events, never()).createEvent(anyLong(), any());
+        assertThat(s.getEventId()).isNull();
     }
 
     // --- B2 ---------------------------------------------------------------------------------

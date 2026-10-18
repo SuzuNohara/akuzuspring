@@ -298,24 +298,26 @@ public class ExternalCalendarService {
         List<ExternalEventDTO> allEvents = new ArrayList<>();
         
         // Obtener eventos del usuario actual
-        allEvents.addAll(getUserExternalEvents(userId, userId, startDate, endDate));
+        allEvents.addAll(getUserExternalEvents(userId, userId, startDate, endDate, false));
         
         // Si hay partnerId, obtener también eventos de la pareja
         if (partnerId != null) {
-            allEvents.addAll(getUserExternalEvents(partnerId, partnerId, startDate, endDate));
+            allEvents.addAll(getUserExternalEvents(partnerId, partnerId, startDate, endDate, true));
         }
         
         return allEvents;
     }
     
     /**
-     * Obtener eventos externos de un usuario específico con privacidad aplicada
+     * Obtener eventos externos de un usuario específico. La privacidad del calendario (RF-23) solo
+     * se aplica cuando los ve la pareja ({@code masked}); su dueña siempre ve el detalle.
      */
     private List<ExternalEventDTO> getUserExternalEvents(
         Long userId,
         Long ownerId,
         Instant startDate,
-        Instant endDate
+        Instant endDate,
+        boolean masked
     ) {
         // Obtener calendarios activos del usuario
         List<ExternalCalendar> calendars = externalCalendarRepository
@@ -340,6 +342,9 @@ public class ExternalCalendarService {
         return events.stream()
             .map(event -> {
                 ExternalCalendar calendar = calendarMap.get(event.getExternalCalendarId());
+                if (!masked) {
+                    return ExternalEventDTO.fromEntity(event, ownerId);
+                }
                 return ExternalEventDTO.fromEntityWithPrivacy(
                     event,
                     ownerId,

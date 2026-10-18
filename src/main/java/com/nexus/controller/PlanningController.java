@@ -127,6 +127,13 @@ public class PlanningController {
         return ResponseEntity.ok(service.acceptProposal(userId, sessionId));
     }
 
+    @PostMapping("/{sessionId}/leftover/invite")
+    public ResponseEntity<PlanningView> inviteLeftover(@PathVariable Long userId, @PathVariable Long sessionId,
+                                                       @AuthenticationPrincipal AuthenticatedUser me) {
+        OwnershipGuard.requireSelf(me, userId);
+        return ResponseEntity.ok(service.inviteLeftover(userId, sessionId));
+    }
+
     @PostMapping("/{sessionId}/proposal/reject")
     public ResponseEntity<PlanningView> rejectProposal(@PathVariable Long userId, @PathVariable Long sessionId,
                                                        @AuthenticationPrincipal AuthenticatedUser me) {

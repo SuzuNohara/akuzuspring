@@ -133,6 +133,17 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("should treat an email with capitals as the one already in use (RN-25)")
+    void shouldTreatAnEmailWithCapitalsAsTheOneAlreadyInUse() {
+        given(userRepository.existsByEmail(EMAIL.toLowerCase())).willReturn(true);
+        RegisterRequest request = validRegistration().email(EMAIL.toUpperCase()).build();
+
+        assertThatThrownBy(() -> service.registerUser(request))
+                .isInstanceOf(BadRequestException.class);
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
     @DisplayName("should lock the account for 15 minutes on the third failed login (RN-03)")
     void shouldLockTheAccountFor15MinutesOnTheThirdFailedLogin() {
         User user = verifiedUser().failedLoginAttempts(2).build();

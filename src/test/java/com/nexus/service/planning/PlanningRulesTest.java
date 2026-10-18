@@ -55,6 +55,18 @@ class PlanningRulesTest {
     }
 
     @Test
+    @DisplayName("el tiempo que falta se dice como es, aunque el aviso salga tarde")
+    void untilPhrase() {
+        assertThat(PlanningRules.untilPhrase(Duration.ofMinutes(230))).isEqualTo("3 h 50 min");
+        assertThat(PlanningRules.untilPhrase(Duration.ofHours(11).plusSeconds(30))).isEqualTo("11 horas");
+        assertThat(PlanningRules.untilPhrase(Duration.ofHours(1))).isEqualTo("1 hora");
+        assertThat(PlanningRules.untilPhrase(Duration.ofMinutes(15))).isEqualTo("15 minutos");
+        assertThat(PlanningRules.untilPhrase(Duration.ofSeconds(50))).isEqualTo("1 minuto");
+        assertThat(PlanningRules.leftTitle(Duration.ofMinutes(230))).isEqualTo("Quedan 3 h 50 min");
+        assertThat(PlanningRules.leftTitle(Duration.ofHours(1))).isEqualTo("Queda 1 hora");
+    }
+
+    @Test
     @DisplayName("una sesion cerrada no recuerda nada")
     void closedSession() {
         PlanningSession s = active(Duration.ofMinutes(10));

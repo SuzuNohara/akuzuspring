@@ -309,11 +309,14 @@ public class RecommendationService {
         IdeaCategory category = IdeaCategory.ofActivityType(a.getActivityType());
         Place place = r.getPlace();
         Instant start = r.getRequest().getSlotStart();
+        Instant end = endOf(a, r.getRequest());
+        // La tarjeta dice lo que cabe en el horario: el evento se recorta al hueco (H22).
+        int minutes = (int) Duration.between(start, end).toMinutes();
         return new RecommendationItem(
                 r.getId(), a.getId(), a.getTitle(), category.name(), category.label(), a.getLocationScope(),
                 place == null ? null : place.getName(), place == null ? null : place.getBorough(),
-                a.getDurationAvg(), a.getCostMxnPp(), r.getReason(), r.getReasonSource(),
-                start, endOf(a, r.getRequest()));
+                minutes, a.getCostMxnPp(), r.getReason(), r.getReasonSource(),
+                start, end);
     }
 
     private static Instant endOf(Activity a, RecommendationRequest request) {

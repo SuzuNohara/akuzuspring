@@ -2,6 +2,7 @@ package com.nexus.service.planning;
 
 import com.nexus.dto.CreateEventResponse;
 import com.nexus.dto.RecommendationBatch;
+import com.nexus.dto.planning.LeftoverView;
 import com.nexus.dto.planning.MessageView;
 import com.nexus.dto.planning.PlanningFilters;
 import com.nexus.dto.planning.PlanningMember;
@@ -400,17 +401,15 @@ public class PlanningService {
         }
     }
 
+    /** El texto usa lo que de verdad falta: si el servidor estuvo apagado, el aviso sale tarde. */
     private void remind(PlanningSession s, PlanningRules.Reminder r) {
+        Instant now = clock.instant();
         switch (r) {
             case INVITE_12H, INVITE_1H -> notifications.notify(s.getPartnerId(), s.getId(), T_REMINDER, "Recordatorio",
                     "La invitación de " + nameOf(s.getInviterId()) + " vence en "
-                            + (r == PlanningRules.Reminder.INVITE_12H ? "12 horas." : "1 hora."));
+                            + PlanningRules.untilPhrase(Duration.between(now, s.getInviteExpiresAt())) + ".");
             case SESSION_6H, SESSION_1H, SESSION_15M -> {
-                String title = switch (r) {
-                    case SESSION_6H -> "Quedan 6 horas";
-                    case SESSION_1H -> "Queda 1 hora";
-                    default -> "Quedan 15 minutos";
-                };
+                String title = PlanningRules.leftTitle(Duration.between(now, s.getSessionExpiresAt()));
                 for (Long member : List.of(s.getInviterId(), s.getPartnerId())) {
                     notifications.notify(member, s.getId(), T_REMINDER, title,
                             "Decidan su cita antes de que se cierre la sesión.");
@@ -433,11 +432,66 @@ public class PlanningService {
             s.setClosedAt(s.getSessionExpiresAt());
             messages.deleteBySessionId(s.getId());
             locations.clear(s.getId());
+            Optional<Recommendation> leftover = leftoverOf(s);
             for (Long member : List.of(s.getInviterId(), s.getPartnerId())) {
-                notifications.notify(member, s.getId(), T_CLOSED, "Se acabó el tiempo", "No llegaron a un acuerdo a tiempo.");
+                notifications.notify(member, s.getId(), T_CLOSED, "Se acabó el tiempo", closingBody(s, member, leftover));
             }
         }
         return s;
+    }
+
+    /** Por que termino, dicho a cada quien: una propuesta sin respuesta no es "no llegaron a un acuerdo". */
+    private String closingBody(PlanningSession s, Long member, Optional<Recommendation> leftover) {
+        if (leftover.isEmpty()) {
+            return "No llegaron a un acuerdo a tiempo.";
+        }
+        if (s.getProposedById() != null) {
+            return member.equals(s.getProposedById())
+                    ? nameOf(s.otherThan(member)) + " no alcanzó a responder tu propuesta."
+                    : "No alcanzaste a responder la propuesta de " + nameOf(s.getProposedById()) + ".";
+        }
+        return "Coincidieron en \"" + leftover.get().getActivity().getTitle() + "\", pero nadie la propuso.";
+    }
+
+    /**
+     * La opcion que vale la pena conservar al cerrarse sin acuerdo: la propuesta sin responder o, si no
+     * hubo, la primera en la que los dos votaron "Me gusta". Vacio si ya se mando como invitacion.
+     */
+    private Optional<Recommendation> leftoverOf(PlanningSession s) {
+        if (s.getEventId() != null || s.getRequestId() == null) {
+            return Optional.empty();
+        }
+        if (s.getProposalRecommendationId() != null) {
+            return recommendations.findById(s.getProposalRecommendationId());
+        }
+        Map<Long, Set<Long>> likedBy = votes.findBySessionId(s.getId()).stream()
+                .filter(v -> v.getVote() == Vote.LIKE)
+                .collect(Collectors.groupingBy(PlanningVote::getRecommendationId,
+                        Collectors.mapping(PlanningVote::getUserId, Collectors.toSet())));
+        return recommendations.findByRequestIdOrderByPositionAsc(s.getRequestId()).stream()
+                .filter(r -> likedBy.getOrDefault(r.getId(), Set.of()).containsAll(List.of(s.getInviterId(), s.getPartnerId())))
+                .findFirst();
+    }
+
+    /** Manda la opcion que quedo como invitacion individual (la pareja la aprueba en sus eventos). */
+    @Transactional
+    public PlanningView inviteLeftover(Long userId, Long sessionId) {
+        PlanningSession s = memberSession(userId, sessionId);
+        requireStatus(s, PlanningStatus.CLOSED, "Solo se puede al terminar la planeación.");
+        if (s.getEventId() != null) {
+            throw new ConflictException("Esa opción ya se envió.");
+        }
+        Recommendation rec = leftoverOf(s)
+                .orElseThrow(() -> new ResourceNotFoundException("No quedó ninguna opción para enviar."));
+        RecommendationRequest request = rec.getRequest();
+        if (!request.getSlotStart().isAfter(clock.instant())) {
+            throw new BadRequestException("Ese horario ya pasó. Planeen de nuevo.");
+        }
+        CreateEventResponse created = events.createEvent(userId, RecommendationService.toEvent(rec, request));
+        request.setStatus(RequestStatus.SENT);
+        rec.setChosen(true);
+        s.setEventId(created.getEvent().getId());
+        return view(s, userId, Set.of());
     }
 
     // --- busqueda ---------------------------------------------------------------------------
@@ -498,7 +552,17 @@ public class PlanningService {
                 s.getId(), s.getStatus().name(), phase, s.getInviterId().equals(userId) ? "INVITER" : "PARTNER",
                 me, partner, s.getInviteExpiresAt(), s.getSessionExpiresAt(), filtersOf(s), activity, options,
                 hasMore, relaxed, other.equals(s.getAdjustingUserId()), proposal,
-                s.getStatus() == PlanningStatus.AGREED ? chosen.orElse(null) : null, s.getEventId(), unread);
+                s.getStatus() == PlanningStatus.AGREED ? chosen.orElse(null) : null, s.getEventId(), unread,
+                s.getStatus() == PlanningStatus.CLOSED
+                        ? leftoverOf(s).map(r -> new LeftoverView(toOption.apply(r), leftoverKind(s, userId))).orElse(null)
+                        : null);
+    }
+
+    private static String leftoverKind(PlanningSession s, Long userId) {
+        if (s.getProposedById() == null) {
+            return "MATCH";
+        }
+        return userId.equals(s.getProposedById()) ? "MY_PROPOSAL" : "THEIR_PROPOSAL";
     }
 
     static String phaseOf(PlanningSession s) {

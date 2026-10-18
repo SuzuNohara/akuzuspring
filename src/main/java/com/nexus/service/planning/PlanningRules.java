@@ -68,6 +68,26 @@ public final class PlanningRules {
         };
     }
 
+    /** Lo que falta en palabras ("3 h 50 min", "1 hora", "15 minutos"), en minutos completos (minimo 1). */
+    public static String untilPhrase(Duration left) {
+        long minutes = Math.max(1, left.getSeconds() / 60);
+        long hours = minutes / 60;
+        long rest = minutes % 60;
+        if (hours == 0) {
+            return minutes == 1 ? "1 minuto" : minutes + " minutos";
+        }
+        if (rest == 0) {
+            return hours == 1 ? "1 hora" : hours + " horas";
+        }
+        return hours + " h " + rest + " min";
+    }
+
+    /** Titulo del recordatorio de la sesion con el tiempo real ("Quedan 3 h 50 min", "Queda 1 hora"). */
+    public static String leftTitle(Duration left) {
+        String phrase = untilPhrase(left);
+        return (phrase.startsWith("1 ") ? "Queda " : "Quedan ") + phrase;
+    }
+
     /** Marca el recordatorio y los anteriores de su etapa, para no mandar uno viejo despues. */
     public static void markSent(PlanningSession s, Reminder sent) {
         for (Reminder r : Reminder.values()) {

@@ -13,6 +13,8 @@ import java.util.Set;
  * @param activity lineas recientes de lo que hizo la pareja (B2)
  * @param adjustingByPartner la pareja pidio ajustar filtros tras agotar las opciones (B7)
  * @param agreed la opcion acordada, solo con AGREED (B5)
+ * @param leftover con CLOSED: la propuesta sin responder o la opcion en la que coincidieron, para
+ *     poder mandarla como invitacion; null si no hubo o ya se envio
  */
 public record PlanningView(
         Long id,
@@ -32,4 +34,5 @@ public record PlanningView(
         ProposalView proposal,
         PlanningOption agreed,
         Long eventId,
-        long unreadMessages) {}
+        long unreadMessages,
+        LeftoverView leftover) {}

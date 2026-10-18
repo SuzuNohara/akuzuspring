@@ -3,6 +3,10 @@
 -- National Wellness Institute). activity_type = CAREER -> IdeaCategory.PROFESIONAL.
 -- Costos y duraciones aproximados (needs_review = 1) hasta el catalogo real (U12).
 -- Requiere la tabla activities (add_kb_tables.sql). Idempotente: re-ejecutarlo actualiza.
+-- SET NAMES: desde cmd el cliente de mysql leia el archivo en la pagina de codigos de Windows y los
+-- acentos quedaban rotos ("com├║n"); asi se leen como UTF-8 sin importar desde donde se corra.
+
+SET NAMES utf8mb4;
 
 INSERT INTO `nexus`.`activities` (slug, title, activity_type, location_scope, place_types, dayparts, seasons, duration_min, duration_avg, duration_max, difficulty_physical, difficulty_mental, collaboration, preparation, requires_booking, equipment, cost_mxn_pp, price_band, is_outdoor, weather_ok, ambience, description, rationale, enriched_by, confidence, reviewed_by, needs_review) VALUES
   ('planear-metas-del-ano', 'Planear sus metas del año', 'CAREER', 'HOME', '', 'AFTERNOON|NIGHT', 'ANY', 90, 120, 180, 0, 3, 9, 2, 0, 'cartulina|revistas', 0, 'FREE', 0, 'ANY', 'HOME|QUIET', 'Armar juntos un tablero de visión con las metas personales y de trabajo de cada uno para este año.', 'Conocer y apoyar las metas del otro fortalece el bienestar profesional de los dos.', 'manual', 1.0, NULL, 1),

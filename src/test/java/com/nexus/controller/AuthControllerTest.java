@@ -43,6 +43,10 @@ class AuthControllerTest {
     private static final String LOGIN_BODY =
             "{\"email\":\"a@b.co\",\"password\":\"Secreto123!\"}";
 
+    private static final String VERIFY_PATH = "/auth/verify-email";
+
+    private static final String VERIFY_BODY = "{\"email\":\"a@b.co\",\"code\":\"123456\"}";
+
     private static final long USER_ID = 7L;
 
     private static final String USER_EMAIL = "a@b.co";
@@ -141,6 +145,56 @@ class AuthControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(LOGIN_BODY))
                 .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    @DisplayName("should return a session when email verification succeeds")
+    void shouldReturnSessionWhenEmailVerificationSucceeds() throws Exception {
+        Instant expiresAt = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS);
+        given(userService.verifyEmail(anyString(), anyString())).willReturn(activeUser());
+        given(preferenceService.hasCompletedQuestionnaire(USER_ID)).willReturn(false);
+        given(jwtService.issueFor(USER_ID, USER_EMAIL))
+                .willReturn(new IssuedToken("t.o.k", expiresAt));
+
+        mockMvc.perform(
+                        post(VERIFY_PATH)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VERIFY_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("t.o.k"))
+                .andExpect(jsonPath("$.tokenExpiresAt").isNotEmpty())
+                .andExpect(jsonPath("$.linkCode").value("ABCD-1234"))
+                .andExpect(jsonPath("$.questionnaireCompleted").value(false));
+    }
+
+    @Test
+    @DisplayName("should not issue token when verification code is wrong")
+    void shouldNotIssueTokenWhenVerificationCodeIsWrong() throws Exception {
+        given(userService.verifyEmail(anyString(), anyString()))
+                .willThrow(new BadRequestException("Código de verificación incorrecto"));
+
+        mockMvc.perform(
+                        post(VERIFY_PATH)
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VERIFY_BODY))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(jwtService);
+    }
+
+    @Test
+    @DisplayName("should not issue token when reset code is verified")
+    void shouldNotIssueTokenWhenResetCodeIsVerified() throws Exception {
+        given(userService.verifyResetCode(anyString(), anyString())).willReturn("VALID");
+
+        mockMvc.perform(
+                        post("/auth/verify-reset-code")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(VERIFY_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").doesNotExist());
 
         verifyNoInteractions(jwtService);
     }

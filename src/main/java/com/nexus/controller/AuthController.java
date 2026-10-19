@@ -88,7 +88,11 @@ public class AuthController {
         log.info("Recibida solicitud de verificación de email para: {}", request.getEmail());
         
         User user = userService.verifyEmail(request.getEmail(), request.getCode());
-        
+
+        // Figma H4: el codigo prueba que el correo es suyo, asi que se entra directo (sin volver
+        // a pedir la contrasena). Solo la rama de exito emite token, igual que el login.
+        IssuedToken issued = jwtService.issueFor(user.getId(), user.getEmail());
+
         VerifyEmailResponse response = VerifyEmailResponse.builder()
             .success(true)
             .message("Email verificado exitosamente. Tu cuenta está ahora activa.")
@@ -97,6 +101,10 @@ public class AuthController {
             .displayName(user.getDisplayName())
             .nickname(user.getNickname())
             .emailConfirmed(true)
+            .linkCode(user.getLinkCode())
+            .questionnaireCompleted(preferenceService.hasCompletedQuestionnaire(user.getId()))
+            .token(issued.token())
+            .tokenExpiresAt(issued.expiresAt())
             .build();
         
         return ResponseEntity.ok(response);

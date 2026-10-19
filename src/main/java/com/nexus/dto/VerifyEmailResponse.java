@@ -1,5 +1,6 @@
 package com.nexus.dto;
 
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,4 +19,11 @@ public class VerifyEmailResponse {
     private String displayName;
     private String nickname;
     private boolean emailConfirmed;
+
+    // Figma H4: al verificar el correo se entra directo, con la misma sesion que da el login.
+    // Null en verify-reset-code y en toda respuesta de fallo.
+    private String linkCode;
+    private String token;
+    private Instant tokenExpiresAt;
+    private boolean questionnaireCompleted;
 }

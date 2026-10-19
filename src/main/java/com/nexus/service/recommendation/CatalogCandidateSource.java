@@ -26,8 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
  * U7 sobre MySQL - Elige actividades del catalogo recorriendo la {@link RelaxationLadder} hasta
  * juntar las pedidas. Es la seleccion mientras no esta conectado el agente y su respaldo despues.
  *
- * <p>Nunca relaja la franja ({@code duration_min} debe caber, RN-27) ni la distancia: una actividad
- * en la ciudad necesita un lugar a 15 km o menos de todas las referencias (RN-31).
+ * <p>Nunca relaja la franja ({@code duration_min} debe caber, RN-27), la distancia (una actividad
+ * en la ciudad necesita un lugar a 15 km o menos de todas las referencias, RN-31) ni el clima
+ * previsto (CU40).
  */
 @Service
 @RequiredArgsConstructor
@@ -94,7 +95,13 @@ public class CatalogCandidateSource implements CandidateSource {
                 && a.getCostMxnPp() <= q.maxCostMxn()
                 && q.acceptsCategory(IdeaCategory.ofActivityType(a.getActivityType()))
                 && (!step.daypartRequired() || daypart.admits(a.getDayparts()))
-                && a.getDurationMin() <= q.slotMinutes();
+                && a.getDurationMin() <= q.slotMinutes()
+                && fitsWeather(a, q);
+    }
+
+    /** CU40: con el clima previsto, una actividad al aire libre solo entra si lo acepta. Nunca se relaja. */
+    static boolean fitsWeather(Activity a, RecommendationQuery q) {
+        return q.weather().allows(Boolean.TRUE.equals(a.getOutdoor()), a.getWeatherOk());
     }
 
     private static Optional<Candidate> toCandidate(

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,6 +31,7 @@ import com.nexus.exception.ForbiddenException;
 import com.nexus.model.ReasonSource;
 import com.nexus.model.RequestStatus;
 import com.nexus.model.Scope;
+import com.nexus.model.WeatherCondition;
 import com.nexus.model.ZoneType;
 import com.nexus.repository.BoroughRepository;
 import com.nexus.repository.LinkRepository;
@@ -73,9 +75,11 @@ class RecommendationServiceTest {
     private final CoupleContextService contexts = mock(CoupleContextService.class);
     private final MutualSlotChecker slots = mock(MutualSlotChecker.class);
     private final EventService events = mock(EventService.class);
+    private final WeatherService weather = mock(WeatherService.class);
 
     private final RecommendationService service = new RecommendationService(
-            links, users, boroughs, places, requests, recommendations, candidates, writer, contexts, slots, events, CLOCK);
+            links, users, boroughs, places, requests, recommendations, candidates, writer, contexts, slots, events,
+            weather, CLOCK);
 
     private final User ana = User.builder().id(ANA).build();
     private final Link link = Link.builder().id(7L).initiatorUser(ana).partnerUser(User.builder().id(SAM).build()).build();
@@ -99,6 +103,22 @@ class RecommendationServiceTest {
         when(slots.isMutualFree(ANA, SAM, START, END)).thenReturn(true);
         when(contexts.build(eq(ANA), any())).thenReturn(CoupleContext.empty());
         when(users.getReferenceById(ANA)).thenReturn(ana);
+        when(weather.conditionFor(any())).thenReturn(WeatherCondition.UNKNOWN);
+    }
+
+    @Test
+    @DisplayName("CU40: el clima previsto en la franja llega a la seleccion")
+    void forecastReachesTheSelection() {
+        when(weather.conditionFor(any())).thenReturn(WeatherCondition.RAINY);
+        when(candidates.select(any(), any(), any(), anyInt()))
+                .thenReturn(new Selection(List.of(), java.util.EnumSet.noneOf(RelaxedFilter.class), SelectionSource.CATALOG));
+        when(writer.write(any(), any())).thenReturn(List.of());
+        when(requests.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recommendations.saveAll(any())).thenReturn(List.of());
+
+        service.request(ANA, simple());
+
+        verify(candidates).select(argThat(q -> q.weather() == WeatherCondition.RAINY), any(), any(), anyInt());
     }
 
     @Test

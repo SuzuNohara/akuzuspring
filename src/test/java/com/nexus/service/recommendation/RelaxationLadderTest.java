@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.nexus.model.IdeaCategory;
 import com.nexus.model.Scope;
+import com.nexus.model.WeatherCondition;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
@@ -75,6 +76,16 @@ class RelaxationLadderTest {
             assertThat(step.query().slotStart()).isEqualTo(START);
             assertThat(step.query().slotEnd()).isEqualTo(END);
             assertThat(step.query().references()).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("el clima nunca se relaja")
+    void weatherStays() {
+        RecommendationQuery rainy = query(Scope.HOME, 500, IdeaCategory.FISICO).withWeather(WeatherCondition.RAINY);
+
+        for (LadderStep step : RelaxationLadder.steps(rainy)) {
+            assertThat(step.query().weather()).isEqualTo(WeatherCondition.RAINY);
         }
     }
 }

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.nexus.entity.Activity;
 import com.nexus.model.IdeaCategory;
 import com.nexus.model.Scope;
+import com.nexus.model.WeatherCondition;
 import com.nexus.repository.ActivityPlaceView;
 import com.nexus.repository.ActivityRepository;
 import com.nexus.repository.PlaceRepository;
@@ -85,6 +86,48 @@ class CatalogCandidateSourceTest {
         assertThat(ids(s)).containsExactly(3L, 2L, 1L);
         assertThat(s.relaxed()).isEmpty();
         assertThat(s.source()).isEqualTo(SelectionSource.CATALOG);
+    }
+
+    private static Activity outdoor(long id, String title, String weatherOk) {
+        return Activity.builder()
+                .id(id).slug("a" + id).title(title).description("d").activityType("PICNIC")
+                .locationScope("HOME").durationMin(60).durationAvg(60).costMxnPp(0)
+                .priceBand("FREE").outdoor(true).weatherOk(weatherOk).dayparts("ANY").rationale("r" + id).build();
+    }
+
+    @Test
+    @DisplayName("clima: con lluvia prevista no salen las de aire libre que piden buen clima, ni ampliando todo")
+    void rainKeepsOutdoorPlansOut() {
+        catalog.add(outdoor(1, "Picnic", "CLOUDY|SUNNY"));
+        catalog.add(outdoor(2, "Bajo la lluvia", "ANY"));
+        catalog.add(act(3, "Juego de mesa", "BOARD_GAME", "HOME", 0, 60, "ANY"));
+        RecommendationQuery rainy = query(Scope.ANY, 15_000, null, List.of()).withWeather(WeatherCondition.RAINY);
+
+        Selection s = source.select(rainy, CoupleContext.empty(), Set.of(), 5);
+
+        assertThat(ids(s)).containsExactlyInAnyOrder(2L, 3L);
+    }
+
+    @Test
+    @DisplayName("clima: nublado deja pasar CLOUDY|SUNNY pero no SUNNY")
+    void cloudyKeepsSunnyOnlyPlansOut() {
+        catalog.add(outdoor(1, "Picnic", "CLOUDY|SUNNY"));
+        catalog.add(outdoor(2, "Ver el atardecer", "SUNNY"));
+        RecommendationQuery cloudy = query(Scope.ANY, 15_000, null, List.of()).withWeather(WeatherCondition.CLOUDY);
+
+        Selection s = source.select(cloudy, CoupleContext.empty(), Set.of(), 5);
+
+        assertThat(ids(s)).containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("clima: sin pronostico no se descarta nada")
+    void unknownWeatherFiltersNothing() {
+        catalog.add(outdoor(1, "Ver el atardecer", "SUNNY"));
+
+        Selection s = source.select(query(Scope.ANY, 15_000, null, List.of()), CoupleContext.empty(), Set.of(), 5);
+
+        assertThat(ids(s)).containsExactly(1L);
     }
 
     @Test

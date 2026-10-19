@@ -151,7 +151,7 @@ public class VectorCandidateSource implements CandidateSource {
         List<Candidate> result = new ArrayList<>();
         for (ScoredId hit : hits) {
             Activity a = byId.get(hit.id());
-            if (a == null) {
+            if (a == null || !CatalogCandidateSource.fitsWeather(a, query)) {
                 continue;
             }
             double score = hit.score() + PREFERENCE_BONUS * context.weight(IdeaCategory.ofActivityType(a.getActivityType()));

@@ -73,6 +73,7 @@ public class RecommendationService {
     private final CoupleContextService contexts;
     private final MutualSlotChecker slots;
     private final EventService events;
+    private final WeatherService weather;
     private final Clock clock;
 
     /** Las 16 alcaldias para elegir zona, en orden alfabetico (sin coordenadas). */
@@ -89,8 +90,8 @@ public class RecommendationService {
         validateSlot(userId, partnerOf(link, userId), p.slotStart(), p.slotEnd());
         IdeaCategory category = parseCategory(p.category());
         Optional<Borough> borough = boroughOf(p);
-        RecommendationQuery query = new RecommendationQuery(
-                p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough));
+        RecommendationQuery query = withForecast(new RecommendationQuery(
+                p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough)));
         CoupleContext context = contexts.build(userId, link);
         Selection selection = candidates.select(query, context, Set.of(), STORED);
         List<WrittenReason> reasons = writer.write(selection.candidates(), context);
@@ -110,8 +111,8 @@ public class RecommendationService {
     @Transactional
     public RecommendationBatch requestForCouple(Long requesterId, Link link, CoupleCriteria c) {
         validateSlot(requesterId, partnerOf(link, requesterId), c.slotStart(), c.slotEnd());
-        RecommendationQuery query = new RecommendationQuery(
-                c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references());
+        RecommendationQuery query = withForecast(new RecommendationQuery(
+                c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references()));
         CoupleContext context = contexts.build(requesterId, link);
         Selection selection = candidates.select(query, context, Set.of(), STORED);
         List<WrittenReason> reasons = writer.write(selection.candidates(), context);
@@ -134,6 +135,13 @@ public class RecommendationService {
         List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
         Set<String> relaxed = selection.relaxed().stream().map(Enum::name).collect(Collectors.toSet());
         return new RecommendationBatch(saved.getId(), visible, relaxed, selection.source().name(), stored.size() > PAGE);
+    }
+
+    /** CU40: el clima previsto en la franja entra a la seleccion (al aire libre solo si conviene). */
+    private RecommendationQuery withForecast(RecommendationQuery query) {
+        RecommendationQuery withWeather = query.withWeather(weather.conditionFor(query));
+        log.info("Clima previsto en la franja: {}", withWeather.weather());
+        return withWeather;
     }
 
     /** "Buscar mas opciones": las siguientes {@link #PAGE} guardadas que no se han visto. */

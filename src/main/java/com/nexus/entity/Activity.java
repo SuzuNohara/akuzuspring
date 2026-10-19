@@ -68,4 +68,11 @@ public class Activity {
 
     @Column(name = "is_outdoor", nullable = false)
     private Boolean outdoor;
+
+    /**
+     * Climas con los que se puede hacer al aire libre: {@code ANY} o {@code SUNNY} / {@code CLOUDY}
+     * separados por {@code |} (CU40, ver {@link com.nexus.model.WeatherCondition#allows}).
+     */
+    @Column(name = "weather_ok", nullable = false)
+    private String weatherOk;
 }

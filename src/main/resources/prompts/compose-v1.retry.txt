@@ -1,0 +1,2 @@
+Tu respuesta anterior no fue JSON válido o no contenía picks válidos.
+Responde únicamente con el JSON pedido, sin texto adicional: {"picks":[{"ref":<número>,"why":"<frase>"}]} con {{k}} elementos.

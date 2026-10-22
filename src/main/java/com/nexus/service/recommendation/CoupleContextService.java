@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,28 +37,41 @@ public class CoupleContextService {
     private final EmotionService emotions;
 
     /**
-     * Pesos por dimension de los dos integrantes del vinculo.
+     * Pesos por dimension de los dos integrantes del vinculo y, aparte, los intereses de quien pide
+     * ({@code userId}) y los de su pareja.
      *
      * @implNote O(p) con p = preferencias de los dos.
      */
     @Transactional(readOnly = true)
     public CoupleContext build(Long userId, Link link) {
+        Long initiator = link.getInitiatorUser().getId();
+        Long partner = link.getPartnerUser().getId();
+        List<UserPreference> initiatorChoices = realChoices(initiator);
+        List<UserPreference> partnerChoices = realChoices(partner);
         Map<IdeaCategory, Integer> weights = new EnumMap<>(IdeaCategory.class);
-        List<Long> members = List.of(link.getInitiatorUser().getId(), link.getPartnerUser().getId());
-        members.stream()
-                .flatMap(memberId -> preferences.findByUserId(memberId).stream())
-                .filter(CoupleContextService::isRealChoice)
+        Stream.concat(initiatorChoices.stream(), partnerChoices.stream())
                 .map(CoupleContextService::dimensionOf)
                 .flatMap(Optional::stream)
                 .forEach(category -> weights.merge(category, 1, Integer::sum));
-        List<EmotionService.MoodAverage> moods = members.stream()
+        List<EmotionService.MoodAverage> moods = Stream.of(initiator, partner)
                 .map(memberId -> emotions.averageLastDays(memberId, MOOD_DAYS))
                 .flatMap(Optional::stream)
                 .toList();
+        boolean askedByInitiator = initiator.equals(userId);
         return new CoupleContext(
                 weights,
                 MoodLevel.combine(moods.stream().map(EmotionService.MoodAverage::valence).toList()),
-                MoodLevel.combine(moods.stream().map(EmotionService.MoodAverage::activation).toList()));
+                MoodLevel.combine(moods.stream().map(EmotionService.MoodAverage::activation).toList()),
+                namesOf(askedByInitiator ? initiatorChoices : partnerChoices),
+                namesOf(askedByInitiator ? partnerChoices : initiatorChoices));
+    }
+
+    private List<UserPreference> realChoices(Long memberId) {
+        return preferences.findByUserId(memberId).stream().filter(CoupleContextService::isRealChoice).toList();
+    }
+
+    private static List<String> namesOf(List<UserPreference> choices) {
+        return choices.stream().map(choice -> choice.getPreference().getName()).toList();
     }
 
     private static boolean isRealChoice(UserPreference choice) {

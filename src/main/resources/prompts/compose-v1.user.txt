@@ -1,0 +1,11 @@
+Contexto cerrado de la pareja:
+- Alcance: {{scope}}. Categoría pedida: {{category}}. Presupuesto: {{budget_label}}. Tiempo disponible: {{slot_label}}. Franja: {{daypart}}.
+- Intereses compartidos: {{prefs_shared}}.
+- Tus intereses: {{prefs_mine}}.
+- Intereses de tu pareja: {{prefs_partner}}.
+- Ánimo de la pareja: {{climate}}.
+
+Candidatas ({{n}}), una por línea en JSON:
+{{candidates}}
+
+Elige {{k}} candidatas distintas y responde solo con el JSON.

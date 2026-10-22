@@ -58,6 +58,24 @@ class CoupleContextServiceTest {
     }
 
     @Test
+    @DisplayName("U5.6: separa los intereses de quien pide y los de su pareja, sin \"Ninguna\"")
+    void splitsMineAndPartnerInterests() {
+        when(preferences.findByUserId(1L))
+                .thenReturn(List.of(pick("Bienestar Físico", "Yoga"), pick("Bienestar Social", "Cine")));
+        when(preferences.findByUserId(2L))
+                .thenReturn(List.of(pick("Bienestar Físico", "Ciclismo"), pick("Bienestar Ambiental", "Ninguna de estas")));
+
+        CoupleContext askedByPartner = service.build(2L, link());
+        CoupleContext askedByInitiator = service.build(1L, link());
+
+        assertThat(askedByPartner.mine()).containsExactly("Ciclismo");
+        assertThat(askedByPartner.partner()).containsExactly("Yoga", "Cine");
+        assertThat(askedByInitiator.mine()).containsExactly("Yoga", "Cine");
+        assertThat(askedByInitiator.partner()).containsExactly("Ciclismo");
+        assertThat(askedByInitiator.weight(IdeaCategory.FISICO)).isEqualTo(2);
+    }
+
+    @Test
     @DisplayName("una categoria con nombre desconocido se ignora")
     void ignoresUnknownCategory() {
         when(preferences.findByUserId(1L)).thenReturn(List.of(pick("Otra cosa", "X")));

@@ -89,7 +89,11 @@ public class CatalogCandidateSource implements CandidateSource {
                 .toList();
     }
 
-    private static boolean matches(Activity a, LadderStep step, Daypart daypart) {
+    /**
+     * Si la actividad cumple el escalon (sin contar distancia ni exclusiones). Publico para que
+     * {@code HardFilterTest} compruebe que el filtro de Qdrant acepta lo mismo (R12).
+     */
+    public static boolean matches(Activity a, LadderStep step, Daypart daypart) {
         RecommendationQuery q = step.query();
         return (q.scope() == Scope.ANY || q.scope().name().equals(a.getLocationScope()))
                 && a.getCostMxnPp() <= q.maxCostMxn()

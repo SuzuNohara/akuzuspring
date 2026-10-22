@@ -19,7 +19,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * [t06b-agente-java] U4 - Sube las ofertas del catalogo a Qdrant, un punto por oferta, y apunta el
- * alias {@value #ALIAS} a la coleccion. Es idempotente: solo vectoriza las ofertas cuyo
+ * alias de {@code nexus.agent.alias} a la coleccion. Es idempotente: solo vectoriza las ofertas cuyo
  * {@code text_hash} cambio y borra los puntos de ofertas que ya no existen (igual que
  * {@code indexer.py} del lab). Sustituye a {@code ActivityIndexer}.
  */
@@ -27,12 +27,6 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class OfferIndexer {
-
-    /** Alias que usa la busqueda; apunta a la coleccion del modelo y la version de texto vigentes. */
-    public static final String ALIAS = "nexus_catalog_active";
-
-    /** Version del texto canonico; cambiarla obliga a reindexar en una coleccion nueva. */
-    public static final String TEXT_VERSION = "t2";
 
     /** Dimension de los vectores de {@code bge-m3}. */
     public static final int DIMENSION = 1024;
@@ -67,7 +61,7 @@ public class OfferIndexer {
     public IndexReport ensureIndexed() {
         long start = System.nanoTime();
         CatalogLoad load = catalog.load();
-        String collection = CanonicalText.collectionName(properties.embedModel(), DIMENSION, TEXT_VERSION);
+        String collection = CanonicalText.collectionName(properties.embedModel(), DIMENSION, properties.textVersion());
         qdrant.ensureCollection(collection, DIMENSION);
         qdrant.ensurePayloadIndexes(collection, PAYLOAD_INDEXES);
         Map<String, String> existing = qdrant.payloadValues(collection, TEXT_HASH);
@@ -77,7 +71,7 @@ public class OfferIndexer {
         for (Offer offer : load.offers()) {
             String id = CanonicalText.pointId(offer);
             String text = CanonicalText.of(offer);
-            String hash = CanonicalText.hash(properties.embedModel(), TEXT_VERSION, text);
+            String hash = CanonicalText.hash(properties.embedModel(), properties.textVersion(), text);
             current.add(id);
             if (!hash.equals(existing.get(id))) {
                 pending.add(new Pending(id, text, payload(offer, hash)));
@@ -88,7 +82,7 @@ public class OfferIndexer {
         if (!stale.isEmpty()) {
             qdrant.delete(collection, stale);
         }
-        qdrant.pointAlias(ALIAS, collection);
+        qdrant.pointAlias(properties.alias(), collection);
 
         IndexReport report = new IndexReport(
                 collection,

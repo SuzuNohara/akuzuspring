@@ -19,10 +19,8 @@ import org.springframework.validation.annotation.Validated;
  * @param chatModel modelo que redacta las frases (Mistral 7B, seccion 2.17)
  * @param embedModel modelo de embeddings
  * @param qdrantUrl direccion de la API REST de Qdrant
- * @param collection coleccion vieja de Qdrant ({@code ActivityIndexer}); se quita al borrarlo (T-37)
  * @param llmTimeout tope de cada llamada a Mistral; con politica HARD tambien lo acota lo que
  *     quede del presupuesto
- * @param candidatePool candidatas por busqueda de la busqueda vieja; se quita en la limpieza (T-37)
  * @param indexOnStartup si al arrancar se reindexa el catalogo cuando no coincide con Qdrant
  * @param enabled si las recomendaciones usan el agente (busqueda en Qdrant y frases de Mistral);
  *     apagado, todo sale del catalogo de MySQL
@@ -46,9 +44,7 @@ public record AgentProperties(
         @NotBlank String chatModel,
         @NotBlank String embedModel,
         @NotNull URI qdrantUrl,
-        @NotBlank String collection,
         @NotNull Duration llmTimeout,
-        @Positive int candidatePool,
         boolean indexOnStartup,
         boolean enabled,
         @DefaultValue("nexus_catalog_active") @NotBlank String alias,

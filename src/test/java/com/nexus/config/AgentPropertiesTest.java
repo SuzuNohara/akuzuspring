@@ -28,9 +28,7 @@ class AgentPropertiesTest {
                     "nexus.agent.chat-model=mistral:7b",
                     "nexus.agent.embed-model=bge-m3",
                     "nexus.agent.qdrant-url=http://localhost:6333",
-                    "nexus.agent.collection=activities",
-                    "nexus.agent.llm-timeout=7s",
-                    "nexus.agent.candidate-pool=40");
+                    "nexus.agent.llm-timeout=7s");
 
     @Test
     @DisplayName("U13.5: should load the defaults of the new properties")

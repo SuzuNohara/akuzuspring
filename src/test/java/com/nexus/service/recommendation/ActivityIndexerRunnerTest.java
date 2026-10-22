@@ -19,10 +19,7 @@ class ActivityIndexerRunnerTest {
     private final OfferIndexer indexer = mock(OfferIndexer.class);
 
     private static AgentProperties withAgent(boolean enabled, boolean indexOnStartup) {
-        AgentProperties d = AgentTestProperties.defaults();
-        return new AgentProperties(
-                d.ollamaUrl(), d.chatModel(), d.embedModel(), d.qdrantUrl(), d.collection(),
-                d.llmTimeout(), d.candidatePool(), indexOnStartup, enabled);
+        return AgentTestProperties.with(enabled, indexOnStartup);
     }
 
     @Test

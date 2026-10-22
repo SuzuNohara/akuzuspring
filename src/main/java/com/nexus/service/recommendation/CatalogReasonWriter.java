@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service;
 public class CatalogReasonWriter implements ReasonWriter {
 
     /** Largo maximo que se muestra (el validador del agente usa el mismo). */
-    static final int MAX_LENGTH = 200;
+    public static final int MAX_LENGTH = 200;
 
     private static final String ELLIPSIS = "…";
 

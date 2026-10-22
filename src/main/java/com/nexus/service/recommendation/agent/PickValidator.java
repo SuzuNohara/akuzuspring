@@ -101,7 +101,7 @@ public final class PickValidator {
     }
 
     /** 20 a 140 caracteres, sin enlaces ni {@code @<>{}} y sin hablar del animo (RN-28). */
-    private static boolean isValid(String why) {
+    static boolean isValid(String why) {
         return why.length() >= OutputSchema.WHY_MIN_CHARS
                 && why.length() <= WHY_MAX_CHARS
                 && !FORBIDDEN.matcher(why).find()

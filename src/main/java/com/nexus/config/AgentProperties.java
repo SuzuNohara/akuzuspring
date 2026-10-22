@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import java.net.URI;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -18,13 +19,25 @@ import org.springframework.validation.annotation.Validated;
  * @param chatModel modelo que redacta las frases (Mistral 7B, seccion 2.17)
  * @param embedModel modelo de embeddings
  * @param qdrantUrl direccion de la API REST de Qdrant
- * @param collection coleccion de Qdrant con el catalogo de actividades
- * @param llmTimeout tiempo maximo de la redaccion; si se excede se usa el texto del catalogo
- *     (CU40 FA02) para no pasar de los 10 s de RNF-12
- * @param candidatePool cuantas candidatas se piden a Qdrant antes de filtrar por proximidad
+ * @param collection coleccion vieja de Qdrant ({@code ActivityIndexer}); se quita al borrarlo (T-37)
+ * @param llmTimeout tope de cada llamada a Mistral; con politica HARD tambien lo acota lo que
+ *     quede del presupuesto
+ * @param candidatePool candidatas por busqueda de la busqueda vieja; se quita en la limpieza (T-37)
  * @param indexOnStartup si al arrancar se reindexa el catalogo cuando no coincide con Qdrant
  * @param enabled si las recomendaciones usan el agente (busqueda en Qdrant y frases de Mistral);
  *     apagado, todo sale del catalogo de MySQL
+ * @param alias [t06b-agente-java] alias de Qdrant que apunta a la coleccion vigente
+ * @param textVersion version del texto canonico de las ofertas
+ * @param budget presupuesto de toda la solicitud, desde la busqueda hasta la composicion (RNF-12)
+ * @param minLlm tiempo minimo restante para llamar a Mistral; con menos, la lista sale por reglas
+ * @param timePolicy {@code HARD} respeta el presupuesto; {@code SOFT} deja terminar a Mistral (solo
+ *     para pruebas locales)
+ * @param topK candidatas que se recuperan de Qdrant (una por actividad)
+ * @param llmPicks cuantas elige y justifica Mistral (k)
+ * @param numCtx contexto de Mistral en tokens
+ * @param numPredict tope de tokens de la respuesta
+ * @param temperature temperatura de Mistral
+ * @param maxAttempts intentos con Mistral (el segundo es el reintento con la respuesta invalida)
  */
 @Validated
 @ConfigurationProperties(prefix = "nexus.agent")
@@ -37,4 +50,24 @@ public record AgentProperties(
         @NotNull Duration llmTimeout,
         @Positive int candidatePool,
         boolean indexOnStartup,
-        boolean enabled) {}
+        boolean enabled,
+        @DefaultValue("nexus_catalog_active") @NotBlank String alias,
+        @DefaultValue("t2") @NotBlank String textVersion,
+        @DefaultValue("9s") @NotNull Duration budget,
+        @DefaultValue("2500ms") @NotNull Duration minLlm,
+        @DefaultValue("HARD") @NotNull TimePolicy timePolicy,
+        @DefaultValue("30") @Positive int topK,
+        @DefaultValue("5") @Positive int llmPicks,
+        @DefaultValue("8192") @Positive int numCtx,
+        @DefaultValue("600") @Positive int numPredict,
+        @DefaultValue("0.2") double temperature,
+        @DefaultValue("2") @Positive int maxAttempts) {
+
+    /** Que pasa cuando Mistral no termina dentro del presupuesto. */
+    public enum TimePolicy {
+        /** El presupuesto manda: sin tiempo, la lista sale por reglas (RNF-12). */
+        HARD,
+        /** Mistral termina aunque se pase (tope de 60 s); solo para medir en local. */
+        SOFT
+    }
+}

@@ -37,10 +37,7 @@ class MistralReasonWriterTest {
     }
 
     private MistralReasonWriter writer(boolean enabled) {
-        AgentProperties d = AgentTestProperties.defaults();
-        AgentProperties props = new AgentProperties(
-                d.ollamaUrl(), d.chatModel(), d.embedModel(), d.qdrantUrl(), d.collection(),
-                d.llmTimeout(), d.candidatePool(), d.indexOnStartup(), enabled);
+        AgentProperties props = AgentTestProperties.with(enabled, true);
         return new MistralReasonWriter(ollama, new CatalogReasonWriter(), props);
     }
 

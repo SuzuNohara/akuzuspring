@@ -5,20 +5,18 @@ import com.nexus.entity.Activity;
 import com.nexus.integration.ollama.OllamaClient;
 import com.nexus.integration.qdrant.QdrantClient;
 import com.nexus.integration.qdrant.QdrantFilter;
-import com.nexus.integration.qdrant.ScoredId;
-import com.nexus.model.IdeaCategory;
-import com.nexus.model.Scope;
-import com.nexus.repository.ActivityPlaceView;
+import com.nexus.integration.qdrant.QdrantHit;
 import com.nexus.repository.ActivityRepository;
-import com.nexus.repository.PlaceRepository;
+import com.nexus.service.ProximityFilter;
+import com.nexus.service.ProximityFilter.Coordinates;
+import com.nexus.service.recommendation.agent.HardFilter;
+import com.nexus.service.recommendation.agent.QueryText;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -28,26 +26,25 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * [T-06] U7 con el agente - Busca las actividades mas parecidas a lo que la pareja quiere en
- * Qdrant (embedding de {@code nomic-embed-text}), con los filtros duros dentro de la busqueda y la
- * misma escalera de filtros blandos del catalogo (R16). La distancia (RN-31) se revisa en Java con
- * los lugares de MySQL.
+ * [T-06] U7 con el agente - Busca las ofertas mas parecidas a lo que la pareja quiere en Qdrant.
  *
- * <p>Con el agente apagado, o si Ollama o Qdrant fallan, la seleccion completa sale de
- * {@link CatalogCandidateSource} (R8); si Qdrant no junta suficientes, el catalogo completa.
+ * <p>[t06b-agente-java] Vectoriza {@link QueryText} con el modelo de embeddings, recorre la
+ * {@link RelaxationLadder} contando con el filtro duro de cada escalon ({@link HardFilter}: franja,
+ * distancia y clima nunca se relajan) hasta que haya ofertas, y busca la mejor oferta de cada
+ * actividad en el alias vigente. El lugar y la distancia salen del payload.
+ *
+ * <p>Con el agente apagado, si Ollama o Qdrant fallan, o si ningun escalon tiene ofertas, la
+ * seleccion completa sale de {@link CatalogCandidateSource} (R8); si Qdrant no junta {@code n}, el
+ * catalogo completa (R16).
  */
 @Slf4j
 @Primary
 @Service
 public class VectorCandidateSource implements CandidateSource {
 
-    static final String QUERY_PREFIX = "search_query: ";
-
-    /** Peso de cada preferencia de la pareja en la dimension, sobre la similitud (0 a 1). */
-    private static final double PREFERENCE_BONUS = 0.01;
+    static final String GROUP_BY = "activity_id";
 
     private final ActivityRepository activities;
-    private final PlaceRepository places;
     private final OllamaClient ollama;
     private final QdrantClient qdrant;
     private final CatalogCandidateSource catalog;
@@ -55,13 +52,11 @@ public class VectorCandidateSource implements CandidateSource {
 
     public VectorCandidateSource(
             ActivityRepository activities,
-            PlaceRepository places,
             OllamaClient ollama,
             QdrantClient qdrant,
             CatalogCandidateSource catalog,
             AgentProperties properties) {
         this.activities = activities;
-        this.places = places;
         this.ollama = ollama;
         this.qdrant = qdrant;
         this.catalog = catalog;
@@ -71,8 +66,7 @@ public class VectorCandidateSource implements CandidateSource {
     /**
      * {@inheritDoc}
      *
-     * @implNote O(s) busquedas en Qdrant con s escalones (~15), cada una de a lo mas
-     *     {@code candidate-pool} resultados; se detiene en cuanto junta {@code n}.
+     * @implNote Un embed, a lo mas s conteos (s escalones, ~15) y una busqueda agrupada.
      */
     @Override
     @Transactional(readOnly = true)
@@ -89,27 +83,31 @@ public class VectorCandidateSource implements CandidateSource {
     }
 
     private Selection selectByVector(RecommendationQuery query, CoupleContext context, Set<Long> excluded, int n) {
-        float[] vector = ollama.embed(queryText(query, context));
-        String daypart = Daypart.of(query.slotStart(), CatalogCandidateSource.CDMX).name();
-        Map<Long, Candidate> chosen = new LinkedHashMap<>();
-        Set<RelaxedFilter> relaxed = EnumSet.noneOf(RelaxedFilter.class);
-
+        float[] vector = ollama.embed(QueryText.of(query, context));
+        Daypart daypart = Daypart.of(query.slotStart(), CatalogCandidateSource.CDMX);
         for (LadderStep step : RelaxationLadder.steps(query)) {
-            if (chosen.size() >= n) {
-                break;
-            }
-            Set<Long> skip = new HashSet<>(excluded);
-            skip.addAll(chosen.keySet());
-            List<ScoredId> hits = qdrant.search(
-                    properties.collection(), vector, filterOf(step, daypart, skip), properties.candidatePool());
-            List<Candidate> fits = candidatesOf(hits, step.query(), context);
-            if (!fits.isEmpty()) {
-                fits.stream().limit(n - (long) chosen.size()).forEach(c -> chosen.put(c.activity().getId(), c));
-                relaxed = EnumSet.noneOf(RelaxedFilter.class);
-                relaxed.addAll(step.relaxed());
+            QdrantFilter filter = HardFilter.of(step, daypart, excluded);
+            if (qdrant.count(properties.alias(), filter) > 0) {
+                List<QdrantHit> hits = qdrant.searchGroups(properties.alias(), vector, filter, GROUP_BY, properties.topK());
+                List<Candidate> found = candidatesOf(hits, query.references());
+                return topUp(found.stream().limit(n).toList(), step.relaxed(), query, context, excluded, n);
             }
         }
+        return catalog.select(query, context, excluded, n);
+    }
 
+    /** Si Qdrant junto menos de {@code n}, el catalogo completa sin repetir. */
+    private Selection topUp(
+            List<Candidate> found,
+            Set<RelaxedFilter> stepRelaxed,
+            RecommendationQuery query,
+            CoupleContext context,
+            Set<Long> excluded,
+            int n) {
+        Map<Long, Candidate> chosen = new LinkedHashMap<>();
+        found.forEach(c -> chosen.put(c.activity().getId(), c));
+        Set<RelaxedFilter> relaxed = EnumSet.noneOf(RelaxedFilter.class);
+        relaxed.addAll(stepRelaxed);
         if (chosen.size() < n) {
             Set<Long> skip = new HashSet<>(excluded);
             skip.addAll(chosen.keySet());
@@ -120,86 +118,45 @@ public class VectorCandidateSource implements CandidateSource {
         return new Selection(new ArrayList<>(chosen.values()), relaxed, SelectionSource.VECTOR);
     }
 
-    private static QdrantFilter filterOf(LadderStep step, String daypart, Set<Long> skip) {
-        RecommendationQuery q = step.query();
-        Set<String> scopes = q.scope() == Scope.ANY ? null : Set.of(q.scope().name());
-        Set<String> dimensions = q.categories().stream().map(Enum::name).collect(Collectors.toSet());
-        return new QdrantFilter(
-                scopes,
-                q.maxCostMxn(),
-                dimensions,
-                step.daypartRequired() ? daypart : null,
-                (int) q.slotMinutes(),
-                skip);
-    }
-
-    /** Actividades de MySQL en el orden de Qdrant; las que ya no existen se ignoran (S10). */
-    private List<Candidate> candidatesOf(List<ScoredId> hits, RecommendationQuery query, CoupleContext context) {
-        if (hits.isEmpty()) {
-            return List.of();
+    /**
+     * Actividades de MySQL en el orden de Qdrant, una por actividad; las que ya no existen se
+     * ignoran (S10).
+     */
+    private List<Candidate> candidatesOf(List<QdrantHit> hits, List<Coordinates> references) {
+        Map<Long, QdrantHit> byActivity = new LinkedHashMap<>();
+        for (QdrantHit hit : hits) {
+            byActivity.putIfAbsent(longOf(hit.payload().get("activity_id")), hit);
         }
-        Map<Long, Activity> byId = activities.findAllById(hits.stream().map(ScoredId::id).toList()).stream()
+        Map<Long, Activity> found = activities.findAllById(byActivity.keySet()).stream()
                 .collect(Collectors.toMap(Activity::getId, Function.identity()));
-        List<Long> cityIds = byId.values().stream()
-                .filter(a -> "CITY".equals(a.getLocationScope()))
-                .map(Activity::getId)
-                .toList();
-        Map<Long, List<ActivityPlaceView>> placesByActivity = cityIds.isEmpty()
-                ? Map.of()
-                : places.findByActivityIds(cityIds).stream().collect(Collectors.groupingBy(ActivityPlaceView::getActivityId));
-
         List<Candidate> result = new ArrayList<>();
-        for (ScoredId hit : hits) {
-            Activity a = byId.get(hit.id());
-            if (a == null || !CatalogCandidateSource.fitsWeather(a, query)) {
-                continue;
+        byActivity.forEach((activityId, hit) -> {
+            Activity a = found.get(activityId);
+            if (a != null) {
+                result.add(new Candidate(a, placeOf(hit.payload(), references), hit.score()));
             }
-            double score = hit.score() + PREFERENCE_BONUS * context.weight(IdeaCategory.ofActivityType(a.getActivityType()));
-            if (!"CITY".equals(a.getLocationScope())) {
-                result.add(new Candidate(a, null, score));
-                continue;
-            }
-            Optional<PlaceChoice> place = CatalogCandidateSource.nearestValidPlace(
-                    placesByActivity.getOrDefault(a.getId(), List.of()), query.references());
-            place.ifPresent(p -> result.add(new Candidate(a, p, score)));
-        }
-        result.sort(Comparator.comparingDouble(Candidate::score).reversed());
+        });
         return result;
     }
 
-    /**
-     * Lo que se busca, en palabras: dimensiones pedidas (o las que mas eligieron los dos), lugar,
-     * momento del dia y el nivel combinado del animo (RN-28: nunca el de cada persona).
-     */
-    static String queryText(RecommendationQuery query, CoupleContext context) {
-        List<String> parts = new ArrayList<>();
-        parts.add("Plan para una pareja");
-        List<IdeaCategory> dimensions = query.categories().isEmpty()
-                ? context.dimensionWeights().entrySet().stream()
-                        .filter(e -> e.getValue() > 0)
-                        .sorted(Map.Entry.<IdeaCategory, Integer>comparingByValue().reversed())
-                        .limit(2)
-                        .map(Map.Entry::getKey)
-                        .toList()
-                : List.copyOf(query.categories());
-        if (!dimensions.isEmpty()) {
-            parts.add("Bienestar " + dimensions.stream().map(IdeaCategory::label).collect(Collectors.joining(" y ")));
+    /** Lugar del payload con la distancia a la referencia mas lejana; {@code null} en casa. */
+    @SuppressWarnings("unchecked")
+    private static PlaceChoice placeOf(Map<String, Object> payload, List<Coordinates> references) {
+        Object placeId = payload.get("place_id");
+        if (placeId == null) {
+            return null;
         }
-        if (query.scope() == Scope.HOME) {
-            parts.add("en casa");
-        } else if (query.scope() == Scope.CITY) {
-            parts.add("en la ciudad");
-        }
-        parts.add(switch (Daypart.of(query.slotStart(), CatalogCandidateSource.CDMX)) {
-            case MORNING -> "por la mañana";
-            case AFTERNOON -> "por la tarde";
-            case NIGHT -> "por la noche";
-        });
-        if (context.coupleEnergy() == MoodLevel.BAJO || context.coupleValence() == MoodLevel.BAJO) {
-            parts.add("algo tranquilo y reconfortante");
-        } else if (context.coupleEnergy() == MoodLevel.ALTO) {
-            parts.add("algo activo y con energía");
-        }
-        return QUERY_PREFIX + String.join(", ", parts) + ".";
+        Map<String, Object> location = (Map<String, Object>) payload.get("location");
+        Coordinates where = new Coordinates(
+                ((Number) location.get("lat")).doubleValue(), ((Number) location.get("lon")).doubleValue());
+        Double distanceKm = references.isEmpty()
+                ? null
+                : references.stream().mapToDouble(r -> ProximityFilter.distanceKm(where, r)).max().orElse(0);
+        return new PlaceChoice(
+                longOf(placeId), (String) payload.get("place_name"), (String) payload.get("borough"), distanceKm);
+    }
+
+    private static Long longOf(Object value) {
+        return ((Number) value).longValue();
     }
 }

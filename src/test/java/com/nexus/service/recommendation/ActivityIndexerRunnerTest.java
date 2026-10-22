@@ -9,13 +9,14 @@ import static org.mockito.Mockito.when;
 import com.nexus.config.AgentProperties;
 import com.nexus.exception.AgentUnavailableException;
 import com.nexus.integration.AgentTestProperties;
+import com.nexus.service.recommendation.agent.OfferIndexer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /** [T-06] U5 - I4: al arrancar se reindexa si procede; si el agente esta caido solo se avisa. */
 class ActivityIndexerRunnerTest {
 
-    private final ActivityIndexer indexer = mock(ActivityIndexer.class);
+    private final OfferIndexer indexer = mock(OfferIndexer.class);
 
     private static AgentProperties withAgent(boolean enabled, boolean indexOnStartup) {
         AgentProperties d = AgentTestProperties.defaults();
@@ -31,6 +32,14 @@ class ActivityIndexerRunnerTest {
         ActivityIndexerRunner runner = new ActivityIndexerRunner(indexer, withAgent(true, true));
 
         assertThatCode(runner::indexNow).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("U4: con el agente encendido usa el indexador de ofertas")
+    void indexesOffersWhenAgentIsOn() {
+        new ActivityIndexerRunner(indexer, withAgent(true, true)).indexNow();
+
+        verify(indexer).ensureIndexed();
     }
 
     @Test

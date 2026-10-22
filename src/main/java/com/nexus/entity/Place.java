@@ -43,4 +43,8 @@ public class Place {
 
     @Column(nullable = false)
     private Double lon;
+
+    /** [t06b-agente-java] Ambiente del lugar ({@code QUIET|SOCIAL}...); se suma al de la actividad. */
+    @Column(nullable = false)
+    private String ambience;
 }

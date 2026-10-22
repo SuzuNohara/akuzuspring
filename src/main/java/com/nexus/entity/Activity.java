@@ -2,8 +2,13 @@ package com.nexus.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -75,4 +80,24 @@ public class Activity {
      */
     @Column(name = "weather_ok", nullable = false)
     private String weatherOk;
+
+    /** [t06b-agente-java] Lo mas que suele durar (texto canonico del agente). */
+    @Column(name = "duration_max", nullable = false)
+    private Integer durationMax;
+
+    /** [t06b-agente-java] Ambiente de la actividad ({@code HOME|QUIET}...), separado por {@code |}. */
+    @Column(nullable = false)
+    private String ambience;
+
+    /**
+     * [t06b-agente-java] Preferencias del cuestionario con las que encaja ({@code activity_interests}).
+     * Diferida: el banco de ideas no las carga; el indexador las trae con
+     * {@code ActivityRepository#findAllWithInterests} (R2, sin N+1).
+     */
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+            name = "activity_interests",
+            joinColumns = @JoinColumn(name = "activity_id"),
+            inverseJoinColumns = @JoinColumn(name = "preference_id"))
+    private Set<Preference> interests;
 }

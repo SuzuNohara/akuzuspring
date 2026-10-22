@@ -30,7 +30,8 @@ public class CatalogReasonWriter implements ReasonWriter {
                 .toList();
     }
 
-    private static String reasonOf(Activity a) {
+    /** Justificacion del catalogo, o la descripcion si no hay, recortada a {@link #MAX_LENGTH}. */
+    public static String reasonOf(Activity a) {
         String text = a.getRationale() == null || a.getRationale().isBlank() ? a.getDescription() : a.getRationale();
         String trimmed = text == null ? "" : text.strip();
         return trimmed.length() <= MAX_LENGTH ? trimmed : trimmed.substring(0, MAX_LENGTH - 1) + ELLIPSIS;

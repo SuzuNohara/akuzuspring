@@ -61,7 +61,7 @@ class ActivityIndexerTest {
         ArgumentCaptor<List<QdrantPoint>> points = ArgumentCaptor.forClass(List.class);
         verify(qdrant).upsert(eq("activities"), points.capture());
         QdrantPoint point = points.getValue().get(0);
-        assertThat(point.id()).isEqualTo(7L);
+        assertThat(point.id()).isEqualTo("7");
         assertThat(point.payload())
                 .containsEntry("dimension", "EMOCIONAL")
                 .containsEntry("location_scope", "HOME")

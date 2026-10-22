@@ -64,7 +64,7 @@ public class ActivityIndexer {
                 qdrant.ensureCollection(properties.collection(), vector.length);
                 collectionReady = true;
             }
-            batch.add(new QdrantPoint(activity.getId(), vector, payload(activity)));
+            batch.add(new QdrantPoint(String.valueOf(activity.getId()), vector, payload(activity)));
             if (batch.size() == BATCH) {
                 qdrant.upsert(properties.collection(), List.copyOf(batch));
                 batch.clear();

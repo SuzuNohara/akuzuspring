@@ -330,6 +330,19 @@ class RecommendationComposerTest {
     }
 
     @Test
+    @DisplayName("U12: should fill by rules in the selection order, even with scores on another scale")
+    void shouldFillByRulesInTheSelectionOrder() {
+        List<Candidate> mixed = new ArrayList<>(pool(4));
+        Activity fromCatalog = Activity.builder().id(50L).title("Catalogo").rationale("Frase del catalogo 50.").build();
+        mixed.add(new Candidate(fromCatalog, null, 3.0));
+        ollamaAnswers(answer("nada"), answer("nada"));
+
+        Composition c = compose(mixed);
+
+        assertThat(c.picks()).extracting(p -> p.candidate().activity().getId()).containsExactly(1L, 2L, 3L, 4L, 50L);
+    }
+
+    @Test
     @DisplayName("U12: should keep a replaced reason on the picked candidate and still pass the guard")
     void shouldKeepAReplacedReasonOnThePickedCandidate() {
         ollamaAnswers(answer("{\"picks\":[{\"ref\":2,\"why\":\"Ideal porque los dos están cansados hoy.\"},"

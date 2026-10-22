@@ -17,7 +17,6 @@ import com.nexus.service.recommendation.agent.FinalListGuard.GuardException;
 import com.nexus.service.recommendation.agent.PickValidator.ValidationResult;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +27,7 @@ import org.springframework.stereotype.Service;
 /**
  * [t06b-agente-java] U12 - Arma la lista final (igual que {@code composer.py} del lab): Mistral elige
  * y justifica k ({@code llm-picks}) de las candidatas y las reglas completan hasta {@code expected}
- * por puntaje con la frase del catalogo. Si Mistral no sirve (tiempo, caida, respuesta invalida o
+ * en el orden de la seleccion con la frase del catalogo. Si Mistral no sirve (tiempo, caida, respuesta invalida o
  * sin presupuesto), toda la lista sale por reglas.
  *
  * <p>La guardia final corre en todos los modos; si la lista de Mistral no la pasa, sale la de reglas
@@ -197,11 +196,14 @@ public class RecommendationComposer {
         return list;
     }
 
-    /** Las {@code count} mejores por puntaje, una por actividad, con la frase del catalogo. */
+    /**
+     * Las {@code count} primeras del pool, una por actividad, con la frase del catalogo. El pool ya
+     * viene de la mejor a la peor; no se reordena por puntaje porque, si el catalogo completo lo que
+     * no junto Qdrant, sus puntajes estan en otra escala.
+     */
     private static List<WrittenPick> rules(Run run, Set<Long> exclude, int count) {
         Set<Long> seen = new HashSet<>(exclude);
         return run.pool.stream()
-                .sorted(Comparator.comparingDouble(Candidate::score).reversed())
                 .filter(c -> seen.add(c.activity().getId()))
                 .limit(count)
                 .map(c -> new WrittenPick(c, 0, CatalogReasonWriter.reasonOf(c.activity()), ReasonSource.CATALOG))

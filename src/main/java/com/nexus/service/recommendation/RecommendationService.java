@@ -1,5 +1,6 @@
 package com.nexus.service.recommendation;
 
+import com.nexus.config.AgentProperties;
 import com.nexus.dto.BoroughResponse;
 import com.nexus.dto.CreateEventRequest;
 import com.nexus.dto.CreateEventResponse;
@@ -29,6 +30,10 @@ import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserRepository;
 import com.nexus.service.EventService;
 import com.nexus.service.ProximityFilter.Coordinates;
+import com.nexus.service.recommendation.agent.Composition;
+import com.nexus.service.recommendation.agent.Deadline;
+import com.nexus.service.recommendation.agent.RecommendationComposer;
+import com.nexus.service.recommendation.agent.WrittenPick;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -69,7 +74,8 @@ public class RecommendationService {
     private final RecommendationRequestRepository requests;
     private final RecommendationRepository recommendations;
     private final CandidateSource candidates;
-    private final ReasonWriter writer;
+    private final RecommendationComposer composer;
+    private final AgentProperties agent;
     private final CoupleContextService contexts;
     private final MutualSlotChecker slots;
     private final EventService events;
@@ -90,13 +96,14 @@ public class RecommendationService {
         validateSlot(userId, partnerOf(link, userId), p.slotStart(), p.slotEnd());
         IdeaCategory category = parseCategory(p.category());
         Optional<Borough> borough = boroughOf(p);
+        Deadline deadline = Deadline.start(agent.budget().toMillis(), System::nanoTime);
         RecommendationQuery query = withForecast(new RecommendationQuery(
                 p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough)));
         CoupleContext context = contexts.build(userId, link);
-        Selection selection = candidates.select(query, context, Set.of(), STORED);
-        List<WrittenReason> reasons = writer.write(selection.candidates(), context);
+        Selection selection = candidates.select(query, context, Set.of(), poolSize());
+        Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
         RecommendationRequest saved = requests.save(newRequest(userId, link, p, category, borough.orElse(null)));
-        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, selection, reasons));
+        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, composition));
         log.info("Solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
         List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
@@ -111,11 +118,12 @@ public class RecommendationService {
     @Transactional
     public RecommendationBatch requestForCouple(Long requesterId, Link link, CoupleCriteria c) {
         validateSlot(requesterId, partnerOf(link, requesterId), c.slotStart(), c.slotEnd());
+        Deadline deadline = Deadline.start(agent.budget().toMillis(), System::nanoTime);
         RecommendationQuery query = withForecast(new RecommendationQuery(
                 c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references()));
         CoupleContext context = contexts.build(requesterId, link);
-        Selection selection = candidates.select(query, context, Set.of(), STORED);
-        List<WrittenReason> reasons = writer.write(selection.candidates(), context);
+        Selection selection = candidates.select(query, context, Set.of(), poolSize());
+        Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
         RecommendationRequest saved = requests.save(RecommendationRequest.builder()
                 .requester(users.getReferenceById(requesterId))
                 .link(link)
@@ -129,12 +137,20 @@ public class RecommendationService {
                 .slotStart(c.slotStart())
                 .slotEnd(c.slotEnd())
                 .build());
-        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, selection, reasons));
+        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, composition));
         log.info("Planeacion en pareja, solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
         List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
         Set<String> relaxed = selection.relaxed().stream().map(Enum::name).collect(Collectors.toSet());
         return new RecommendationBatch(saved.getId(), visible, relaxed, selection.source().name(), stored.size() > PAGE);
+    }
+
+    /**
+     * [t06b-agente-java] Candidatas a pedir: con el agente, {@code top-k} (30) para que Mistral elija;
+     * sin el, las {@link #STORED} de siempre, para no aflojar la escalera de mas (R8).
+     */
+    private int poolSize() {
+        return agent.enabled() ? agent.topK() : STORED;
     }
 
     /** CU40: el clima previsto en la franja entra a la seleccion (al aire libre solo si conviene). */
@@ -291,20 +307,20 @@ public class RecommendationService {
                 .build();
     }
 
-    private List<Recommendation> toRecommendations(
-            RecommendationRequest request, Selection selection, List<WrittenReason> reasons) {
+    /** [t06b-agente-java] Guarda la lista en el orden del compositor; cada frase con su fuente. */
+    private List<Recommendation> toRecommendations(RecommendationRequest request, Composition composition) {
         List<Recommendation> out = new ArrayList<>();
-        for (int i = 0; i < selection.candidates().size(); i++) {
-            Candidate c = selection.candidates().get(i);
-            WrittenReason reason = reasons.get(i);
+        for (int i = 0; i < composition.picks().size(); i++) {
+            WrittenPick pick = composition.picks().get(i);
+            Candidate c = pick.candidate();
             out.add(Recommendation.builder()
                     .request(request)
                     .activity(c.activity())
                     .place(c.place() == null ? null : places.getReferenceById(c.place().placeId()))
                     .round(1)
                     .position(i + 1)
-                    .reason(reason.reason())
-                    .reasonSource(reason.source())
+                    .reason(pick.reason())
+                    .reasonSource(pick.source())
                     .shown(i < PAGE)
                     .build());
         }

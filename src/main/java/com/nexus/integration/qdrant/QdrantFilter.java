@@ -18,8 +18,6 @@ import java.util.Set;
  * @param daypart momento del dia en que empieza la franja (MORNING, AFTERNOON, NIGHT); tambien
  *     pasan las actividades marcadas {@code ANY}
  * @param maxDurationMin duracion minima de la actividad que todavia cabe en la franja (RN-27)
- * @param excludedIds puntos ya mostrados, por id de punto ({@code has_id}); lo usa la coleccion
- *     vieja {@code activities} hasta su borrado
  * @param within [t06b-agente-java] referencias de la pareja; la oferta debe quedar a
  *     {@code radiusM} de cada una (RN-31). Si {@code scopes} admite HOME, las de casa tambien pasan
  * @param radiusM radio en metros de cada referencia de {@code within}
@@ -34,7 +32,6 @@ public record QdrantFilter(
         Set<String> dimensions,
         String daypart,
         Integer maxDurationMin,
-        Set<Long> excludedIds,
         List<Coordinates> within,
         int radiusM,
         WeatherCondition weather,
@@ -43,18 +40,10 @@ public record QdrantFilter(
     /** Valor de {@code dayparts} que sirve a cualquier hora. */
     public static final String ANY_DAYPART = "ANY";
 
-    private static final String HOME = "HOME";
+    /** Sin ninguna condicion. */
+    public static final QdrantFilter NONE = new QdrantFilter(null, null, null, null, null, null, 0, null, null);
 
-    /** Filtro sin distancia, clima ni exclusion por actividad (la busqueda de T-06). */
-    public QdrantFilter(
-            Set<String> scopes,
-            Integer maxCostMxn,
-            Set<String> dimensions,
-            String daypart,
-            Integer maxDurationMin,
-            Set<Long> excludedIds) {
-        this(scopes, maxCostMxn, dimensions, daypart, maxDurationMin, excludedIds, null, 0, null, null);
-    }
+    private static final String HOME = "HOME";
 
     /**
      * Filtro en el formato de la API REST de Qdrant ({@code must} / {@code must_not}).
@@ -117,9 +106,6 @@ public record QdrantFilter(
 
     private List<Map<String, Object>> mustNot() {
         List<Map<String, Object>> mustNot = new ArrayList<>();
-        if (excludedIds != null && !excludedIds.isEmpty()) {
-            mustNot.add(Map.of("has_id", List.copyOf(excludedIds)));
-        }
         if (excludedActivityIds != null && !excludedActivityIds.isEmpty()) {
             mustNot.add(Map.of("key", "activity_id", "match", Map.of("any", List.copyOf(excludedActivityIds))));
         }

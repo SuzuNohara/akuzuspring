@@ -30,6 +30,8 @@ import org.springframework.web.client.RestClient;
 class QdrantClientTest {
 
     private static final String OK = "{\"result\":true,\"status\":\"ok\"}";
+    private static final String UUID_A = "dcc3bc0e-d70f-5ce6-8a6d-57a3aeb1691f";
+    private static final String UUID_B = "ebaca0c4-7913-5968-a3b1-73d37cc537dd";
 
     private MockRestServiceServer server;
     private QdrantClient client;
@@ -72,26 +74,6 @@ class QdrantClientTest {
     }
 
     @Test
-    @DisplayName("Q2: should upsert points with their ids and payload")
-    void shouldUpsertPointsWithTheirIdsAndPayload() {
-        server.expect(requestTo("http://qdrant.test/collections/activities/points?wait=true"))
-                .andExpect(method(HttpMethod.PUT))
-                .andExpect(content().json(
-                        "{\"points\":[{\"id\":3,\"vector\":[0.5,1.0],"
-                                + "\"payload\":{\"location_scope\":\"HOME\",\"dayparts\":[\"NIGHT\"]}}]}"))
-                .andRespond(withSuccess(OK, MediaType.APPLICATION_JSON));
-
-        client.upsert(
-                "activities",
-                List.of(new QdrantPoint(
-                        "3",
-                        new float[] {0.5f, 1.0f},
-                        Map.of("location_scope", "HOME", "dayparts", List.of("NIGHT")))));
-
-        server.verify();
-    }
-
-    @Test
     @DisplayName("Q4: should read the exact number of points")
     void shouldReadTheExactNumberOfPoints() {
         server.expect(requestTo("http://qdrant.test/collections/activities/points/count"))
@@ -99,7 +81,7 @@ class QdrantClientTest {
                 .andExpect(content().json("{\"exact\":true}"))
                 .andRespond(withSuccess("{\"result\":{\"count\":80}}", MediaType.APPLICATION_JSON));
 
-        assertThat(client.count("activities")).isEqualTo(80);
+        assertThat(client.count("activities", QdrantFilter.NONE)).isEqualTo(80);
     }
 
     @Test
@@ -108,34 +90,8 @@ class QdrantClientTest {
         server.expect(requestTo("http://qdrant.test/collections/activities/points/count"))
                 .andRespond(withResourceNotFound());
 
-        assertThat(client.count("activities")).isZero();
+        assertThat(client.count("activities", QdrantFilter.NONE)).isZero();
     }
-
-    @Test
-    @DisplayName("Q3: should search with the vector, the filter and the limit")
-    void shouldSearchWithTheVectorTheFilterAndTheLimit() {
-        server.expect(requestTo("http://qdrant.test/collections/activities/points/search"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(content().json(
-                        "{\"vector\":[1.0,0.0],\"limit\":40,\"with_payload\":false,"
-                                + "\"filter\":{\"must\":[{\"key\":\"location_scope\",\"match\":{\"any\":[\"HOME\"]}}]}}"))
-                .andRespond(withSuccess(
-                        "{\"result\":[{\"id\":12,\"score\":0.91},{\"id\":4,\"score\":0.88}]}",
-                        MediaType.APPLICATION_JSON));
-
-        List<ScoredId> hits =
-                client.search(
-                        "activities",
-                        new float[] {1.0f, 0.0f},
-                        new QdrantFilter(Set.of("HOME"), null, null, null, null, null),
-                        40);
-
-        assertThat(hits).containsExactly(new ScoredId(12L, 0.91), new ScoredId(4L, 0.88));
-    }
-
-    private static final QdrantFilter NONE = new QdrantFilter(null, null, null, null, null, null);
-    private static final String UUID_A = "dcc3bc0e-d70f-5ce6-8a6d-57a3aeb1691f";
-    private static final String UUID_B = "ebaca0c4-7913-5968-a3b1-73d37cc537dd";
 
     @Test
     @DisplayName("U3.5: should send UUID ids as text when upserting offers")
@@ -173,7 +129,7 @@ class QdrantClientTest {
         List<QdrantHit> hits = client.searchGroups(
                 "nexus_catalog_active",
                 new float[] {1.0f, 0.0f},
-                new QdrantFilter(Set.of("HOME"), null, null, null, null, null),
+                new QdrantFilter(Set.of("HOME"), null, null, null, null, null, 0, null, null),
                 "activity_id",
                 30);
 
@@ -191,7 +147,7 @@ class QdrantClientTest {
                         true))
                 .andRespond(withSuccess("{\"result\":{\"count\":17}}", MediaType.APPLICATION_JSON));
 
-        long count = client.count("catalog", new QdrantFilter(Set.of("CITY"), null, null, null, null, null));
+        long count = client.count("catalog", new QdrantFilter(Set.of("CITY"), null, null, null, null, null, 0, null, null));
 
         assertThat(count).isEqualTo(17);
     }
@@ -277,7 +233,7 @@ class QdrantClientTest {
         server.expect(requestTo("http://qdrant.test/collections/catalog/points/query/groups"))
                 .andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.searchGroups("catalog", new float[] {1f}, NONE, "activity_id", 30))
+        assertThatThrownBy(() -> client.searchGroups("catalog", new float[] {1f}, QdrantFilter.NONE, "activity_id", 30))
                 .isInstanceOf(AgentUnavailableException.class);
     }
 
@@ -293,17 +249,6 @@ class QdrantClientTest {
     }
 
     @Test
-    @DisplayName("Q5: should fail as unavailable when Qdrant answers with an error")
-    void shouldFailAsUnavailableWhenQdrantAnswersWithAnError() {
-        server.expect(requestTo("http://qdrant.test/collections/activities/points/search"))
-                .andRespond(withServerError());
-
-        assertThatThrownBy(() -> client.search(
-                        "activities", new float[] {1f}, new QdrantFilter(null, null, null, null, null, null), 5))
-                .isInstanceOf(AgentUnavailableException.class);
-    }
-
-    @Test
     @DisplayName("Q5: should fail as unavailable when Qdrant is down")
     void shouldFailAsUnavailableWhenQdrantIsDown() {
         server.expect(requestTo("http://qdrant.test/collections/activities/points/count"))
@@ -311,6 +256,6 @@ class QdrantClientTest {
                     throw new IOException("Connection refused");
                 });
 
-        assertThatThrownBy(() -> client.count("activities")).isInstanceOf(AgentUnavailableException.class);
+        assertThatThrownBy(() -> client.count("activities", QdrantFilter.NONE)).isInstanceOf(AgentUnavailableException.class);
     }
 }

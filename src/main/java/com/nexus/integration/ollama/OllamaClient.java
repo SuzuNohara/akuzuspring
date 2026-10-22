@@ -28,9 +28,6 @@ public class OllamaClient {
     /** Mantiene el modelo en memoria entre solicitudes: cargarlo en frio tarda minutos (R1). */
     private static final String KEEP_ALIVE = "30m";
 
-    private static final double TEMPERATURE = 0.3;
-    private static final int MAX_TOKENS = 300;
-
     private final RestClient http;
     private final AgentProperties properties;
 
@@ -106,30 +103,6 @@ public class OllamaClient {
             map.put("seed", options.seed());
         }
         return map;
-    }
-
-    /**
-     * Genera texto en formato JSON con el modelo de redaccion.
-     *
-     * @param timeout tiempo maximo de esta llamada
-     * @return el texto JSON que produjo el modelo, sin validar
-     */
-    public String generateJson(String prompt, Duration timeout) {
-        Map<String, Object> request =
-                Map.of(
-                        "model", properties.chatModel(),
-                        "prompt", prompt,
-                        "stream", false,
-                        "format", "json",
-                        "keep_alive", KEEP_ALIVE,
-                        "options", Map.of("temperature", TEMPERATURE, "num_predict", MAX_TOKENS));
-        CompletableFuture<JsonNode> call = CompletableFuture.supplyAsync(() -> post("/api/generate", request));
-        JsonNode body = await(call, timeout);
-        JsonNode response = body.path("response");
-        if (!response.isTextual()) {
-            throw new AgentUnavailableException("Ollama no devolvio texto");
-        }
-        return response.asText();
     }
 
     private static float[] toVector(JsonNode vector) {

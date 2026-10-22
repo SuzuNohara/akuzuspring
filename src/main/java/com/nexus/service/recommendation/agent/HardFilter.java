@@ -39,7 +39,6 @@ public final class HardFilter {
                 dimensions,
                 step.daypartRequired() ? daypart.name() : null,
                 (int) q.slotMinutes(),
-                null,
                 q.references(),
                 RADIUS_M,
                 q.weather(),

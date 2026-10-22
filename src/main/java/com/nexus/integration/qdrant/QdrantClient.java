@@ -29,7 +29,6 @@ public class QdrantClient {
     /** Puntos por pagina al recorrer la coleccion con {@code scroll}. */
     static final int SCROLL_PAGE = 256;
 
-    private static final QdrantFilter NO_FILTER = new QdrantFilter(null, null, null, null, null, null);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> PAYLOAD = new TypeReference<>() {};
 
@@ -56,7 +55,7 @@ public class QdrantClient {
     public void upsert(String name, List<QdrantPoint> points) {
         List<Map<String, Object>> body = new ArrayList<>();
         for (QdrantPoint point : points) {
-            body.add(Map.of("id", wireId(point.id()), "vector", point.vector(), "payload", point.payload()));
+            body.add(Map.of("id", point.id(), "vector", point.vector(), "payload", point.payload()));
         }
         call(() -> http.put()
                 .uri("/collections/{name}/points?wait=true", name)
@@ -64,11 +63,6 @@ public class QdrantClient {
                 .body(Map.of("points", body))
                 .retrieve()
                 .toBodilessEntity());
-    }
-
-    /** Numero exacto de puntos; 0 si la coleccion todavia no existe. */
-    public long count(String name) {
-        return count(name, NO_FILTER);
     }
 
     /** [t06b-agente-java] Numero exacto de puntos que cumplen el filtro; 0 si la coleccion no existe. */
@@ -177,27 +171,6 @@ public class QdrantClient {
         return hits;
     }
 
-    /** Los {@code limit} puntos mas parecidos al vector que cumplen el filtro, del mas al menos parecido. */
-    public List<ScoredId> search(String name, float[] vector, QdrantFilter filter, int limit) {
-        Map<String, Object> request = new LinkedHashMap<>();
-        request.put("vector", vector);
-        request.put("limit", limit);
-        request.put("with_payload", false);
-        putFilter(request, filter);
-        JsonNode body =
-                call(() -> http.post()
-                        .uri("/collections/{name}/points/search", name)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body(request)
-                        .retrieve()
-                        .body(JsonNode.class));
-        List<ScoredId> hits = new ArrayList<>();
-        for (JsonNode hit : requireResult(body)) {
-            hits.add(new ScoredId(hit.path("id").asLong(), hit.path("score").asDouble()));
-        }
-        return hits;
-    }
-
     private boolean exists(String name) {
         try {
             http.get().uri("/collections/{name}", name).retrieve().toBodilessEntity();
@@ -226,11 +199,6 @@ public class QdrantClient {
         if (!conditions.isEmpty()) {
             request.put("filter", conditions);
         }
-    }
-
-    /** Qdrant acepta UUID o enteros sin signo: los ids viejos ({@code "7"}) van como numero. */
-    private static Object wireId(String id) {
-        return !id.isEmpty() && id.chars().allMatch(Character::isDigit) ? (Object) Long.parseLong(id) : id;
     }
 
     private static JsonNode requireResult(JsonNode body) {

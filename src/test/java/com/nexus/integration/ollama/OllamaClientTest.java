@@ -54,35 +54,6 @@ class OllamaClientTest {
     }
 
     @Test
-    @DisplayName("O2: should request non streamed JSON from the chat model")
-    void shouldRequestNonStreamedJsonFromTheChatModel() {
-        server.expect(requestTo("http://ollama.test/api/generate"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(content().json(
-                        "{\"model\":\"mistral:7b\",\"prompt\":\"hola\",\"stream\":false,\"format\":\"json\","
-                                + "\"keep_alive\":\"30m\",\"options\":{\"temperature\":0.3,\"num_predict\":300}}"))
-                .andRespond(withSuccess("{\"response\":\"{\\\"items\\\":[]}\",\"done\":true}", MediaType.APPLICATION_JSON));
-
-        String json = client.generateJson("hola", Duration.ofSeconds(5));
-
-        assertThat(json).isEqualTo("{\"items\":[]}");
-        server.verify();
-    }
-
-    @Test
-    @DisplayName("O3: should fail as unavailable when the call exceeds its time limit")
-    void shouldFailAsUnavailableWhenTheCallExceedsItsTimeLimit() {
-        server.expect(requestTo("http://ollama.test/api/generate"))
-                .andRespond(request -> {
-                    sleep(1_000);
-                    return withSuccess("{\"response\":\"{}\"}", MediaType.APPLICATION_JSON).createResponse(request);
-                });
-
-        assertThatThrownBy(() -> client.generateJson("hola", Duration.ofMillis(100)))
-                .isInstanceOf(AgentUnavailableException.class);
-    }
-
-    @Test
     @DisplayName("O4: should fail as unavailable on a server error")
     void shouldFailAsUnavailableOnAServerError() {
         server.expect(requestTo("http://ollama.test/api/embed")).andRespond(withServerError());
@@ -108,16 +79,6 @@ class OllamaClientTest {
                 .andRespond(withSuccess("{\"model\":\"nomic-embed-text\"}", MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> client.embed("x")).isInstanceOf(AgentUnavailableException.class);
-    }
-
-    @Test
-    @DisplayName("O5: should fail as unavailable when generate returns no response text")
-    void shouldFailAsUnavailableWhenGenerateReturnsNoResponseText() {
-        server.expect(requestTo("http://ollama.test/api/generate"))
-                .andRespond(withSuccess("{\"done\":true}", MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(() -> client.generateJson("hola", Duration.ofSeconds(5)))
-                .isInstanceOf(AgentUnavailableException.class);
     }
 
     @Test

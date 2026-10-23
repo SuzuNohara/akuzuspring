@@ -44,9 +44,6 @@ public class RecommendationComposer {
     /** Nivel del {@code system} del lab en que se basa la plantilla. */
     static final String PROMPT_LEVEL = "full";
 
-    /** Tope de cada llamada con politica SOFT. */
-    static final Duration SOFT_CAP = Duration.ofSeconds(60);
-
     private static final String LENGTH = "length";
 
     private final OllamaClient ollama;
@@ -138,10 +135,12 @@ public class RecommendationComposer {
                 new ChatOptions(properties.temperature(), properties.numCtx(), properties.numPredict(), null);
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             run.attempts = attempt;
+            long startedMs = run.deadline.elapsedMs();
             ChatResult result;
             try {
                 result = ollama.chat(List.copyOf(messages), schema, options, callTimeout(run));
             } catch (AgentTimeoutException e) {
+                run.llmMs += run.deadline.elapsedMs() - startedMs; // lo que duro el intento cortado
                 return new Outcome(ComposeMode.RULES_TIMEOUT, List.of());
             } catch (AgentUnavailableException e) {
                 return new Outcome(ComposeMode.RULES_UNAVAILABLE, List.of());
@@ -170,9 +169,9 @@ public class RecommendationComposer {
         return Map.of("k", String.valueOf(run.k));
     }
 
-    /** HARD: {@code min(llm-timeout, restante - 300 ms)}; SOFT: tope fijo de 60 s. */
+    /** HARD: {@code min(llm-timeout, restante - 300 ms)}; SOFT: {@code soft-cap} (60 s por omision). */
     private Duration callTimeout(Run run) {
-        return isHard() ? run.deadline.callTimeout(properties.llmTimeout().toMillis()) : SOFT_CAP;
+        return isHard() ? run.deadline.callTimeout(properties.llmTimeout().toMillis()) : properties.softCap();
     }
 
     /** Elecciones validas de una respuesta; vacia si se corto ({@code length}) o no trae ninguna. */

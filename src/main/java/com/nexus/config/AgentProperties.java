@@ -36,6 +36,9 @@ import org.springframework.validation.annotation.Validated;
  * @param numPredict tope de tokens de la respuesta
  * @param temperature temperatura de Mistral
  * @param maxAttempts intentos con Mistral (el segundo es el reintento con la respuesta invalida)
+ * @param softCap tope de cada llamada a Mistral con politica {@code SOFT}; subirlo (p. ej. 10m) deja
+ *     ver que elige Mistral en un equipo sin GPU. La app espera por su cuenta
+ *     {@code EXPO_PUBLIC_RECOMMEND_TIMEOUT_MS}
  */
 @Validated
 @ConfigurationProperties(prefix = "nexus.agent")
@@ -57,13 +60,14 @@ public record AgentProperties(
         @DefaultValue("8192") @Positive int numCtx,
         @DefaultValue("600") @Positive int numPredict,
         @DefaultValue("0.2") double temperature,
-        @DefaultValue("2") @Positive int maxAttempts) {
+        @DefaultValue("2") @Positive int maxAttempts,
+        @DefaultValue("60s") @NotNull Duration softCap) {
 
     /** Que pasa cuando Mistral no termina dentro del presupuesto. */
     public enum TimePolicy {
         /** El presupuesto manda: sin tiempo, la lista sale por reglas (RNF-12). */
         HARD,
-        /** Mistral termina aunque se pase (tope de 60 s); solo para medir en local. */
+        /** Mistral termina aunque se pase (tope {@code soft-cap}); solo para medir en local. */
         SOFT
     }
 }

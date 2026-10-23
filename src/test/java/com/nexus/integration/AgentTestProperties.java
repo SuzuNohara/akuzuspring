@@ -19,6 +19,15 @@ public final class AgentTestProperties {
         return of(enabled, indexOnStartup, Duration.ofMillis(300), TimePolicy.HARD);
     }
 
+    /** Politica SOFT con el tope por llamada dado (tope por llamada HARD de 7 s). */
+    public static AgentProperties soft(Duration softCap) {
+        AgentProperties p = of(true, true, Duration.ofSeconds(7), TimePolicy.SOFT);
+        return new AgentProperties(
+                p.ollamaUrl(), p.chatModel(), p.embedModel(), p.qdrantUrl(), p.llmTimeout(), p.indexOnStartup(),
+                p.enabled(), p.alias(), p.textVersion(), p.budget(), p.minLlm(), p.timePolicy(), p.topK(),
+                p.llmPicks(), p.numCtx(), p.numPredict(), p.temperature(), p.maxAttempts(), softCap);
+    }
+
     /** Los valores de prueba con el tope por llamada y la politica de tiempo dados. */
     public static AgentProperties of(boolean enabled, boolean indexOnStartup, Duration llmTimeout, TimePolicy policy) {
         return new AgentProperties(
@@ -39,6 +48,7 @@ public final class AgentTestProperties {
                 8192,
                 600,
                 0.2,
-                2);
+                2,
+                Duration.ofSeconds(60));
     }
 }

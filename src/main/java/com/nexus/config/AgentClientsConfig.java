@@ -26,9 +26,18 @@ public class AgentClientsConfig {
      */
     private static final Duration OLLAMA_READ_TIMEOUT = Duration.ofMinutes(5);
 
+    /** Margen sobre {@code soft-cap} para que el corte lo haga el compositor y no el socket. */
+    private static final Duration SOFT_CAP_MARGIN = Duration.ofSeconds(30);
+
     @Bean
     public OllamaClient ollamaClient(AgentProperties properties) {
-        return new OllamaClient(builder(OLLAMA_READ_TIMEOUT), properties);
+        return new OllamaClient(builder(ollamaReadTimeout(properties)), properties);
+    }
+
+    /** [t06b-agente-java] 5 minutos, o mas si el tope SOFT es mayor. */
+    static Duration ollamaReadTimeout(AgentProperties properties) {
+        Duration withMargin = properties.softCap().plus(SOFT_CAP_MARGIN);
+        return withMargin.compareTo(OLLAMA_READ_TIMEOUT) > 0 ? withMargin : OLLAMA_READ_TIMEOUT;
     }
 
     @Bean

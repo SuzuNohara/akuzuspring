@@ -47,6 +47,8 @@ class AgentPropertiesTest {
             assertThat(p.numPredict()).isEqualTo(600);
             assertThat(p.temperature()).isEqualTo(0.2);
             assertThat(p.maxAttempts()).isEqualTo(2);
+            assertThat(p.softCap()).isEqualTo(Duration.ofSeconds(60));
+            assertThat(AgentClientsConfig.ollamaReadTimeout(p)).isEqualTo(Duration.ofMinutes(5));
         });
     }
 
@@ -62,6 +64,14 @@ class AgentPropertiesTest {
     void shouldFailToStartWithLlmPicksBelowOne() {
         runner.withPropertyValues("nexus.agent.llm-picks=0")
                 .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    @DisplayName("U13.5: should wait on Ollama a bit longer than a soft-cap above 5 minutes")
+    void shouldWaitOnOllamaLongerThanALargeSoftCap() {
+        runner.withPropertyValues("nexus.agent.soft-cap=10m")
+                .run(context -> assertThat(AgentClientsConfig.ollamaReadTimeout(context.getBean(AgentProperties.class)))
+                        .isEqualTo(Duration.ofMinutes(10).plusSeconds(30)));
     }
 
     @Test

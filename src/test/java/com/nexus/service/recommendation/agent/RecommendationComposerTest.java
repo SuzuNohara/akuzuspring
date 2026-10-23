@@ -318,6 +318,31 @@ class RecommendationComposerTest {
     }
 
     @Test
+    @DisplayName("U12.6: should use the configured soft-cap with SOFT, so Mistral can finish without a GPU")
+    void shouldUseTheConfiguredSoftCap() {
+        ollamaAnswers(answer(picks(1, 2, 3, 4, 5)));
+
+        new RecommendationComposer(ollama, AgentTestProperties.soft(Duration.ofMinutes(10)))
+                .compose(query(), context(), pool(20), 15, deadline());
+
+        verify(ollama).chat(any(), any(), any(), org.mockito.ArgumentMatchers.eq(Duration.ofMinutes(10)));
+    }
+
+    @Test
+    @DisplayName("U12.5: should record in llm_ms how long the cut attempt lasted")
+    void shouldRecordHowLongTheCutAttemptLasted() {
+        when(ollama.chat(any(), any(), any(), any())).thenAnswer((Answer<ChatResult>) call -> {
+            advanceMs(7_000);
+            throw new AgentTimeoutException("tarde", null);
+        });
+
+        Composition c = compose(pool(20));
+
+        assertThat(c.trace().mode()).isEqualTo(ComposeMode.RULES_TIMEOUT);
+        assertThat(c.trace().llmMs()).isEqualTo(7_000);
+    }
+
+    @Test
     @DisplayName("U12.1: should cap the call at min(7 s, remaining - 300 ms) with HARD")
     void shouldCapTheCallWithHard() {
         Deadline deadline = deadline();

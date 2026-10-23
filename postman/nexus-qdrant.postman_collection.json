@@ -1,0 +1,869 @@
+{
+  "info": {
+    "_postman_id": "862ca8ba-aea4-4d41-92b6-ab54651fd542",
+    "name": "Nexus - Qdrant local (agente t06b)",
+    "description": "Revisa la vectorizacion del catalogo de Nexus en el Qdrant local.\n\nAntes: Qdrant corriendo en C:\\qdrant (127.0.0.1:6333) y, para la carpeta 5, Ollama con bge-m3.\nUsa el entorno 'Nexus local'. Corre las carpetas en orden (1 a 5): algunas guardan variables para las siguientes (point_id, activity_id, query_vector).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Salud",
+      "description": "Qdrant esta arriba y en que version.",
+      "item": [
+        {
+          "name": "Version de Qdrant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": []
+            },
+            "description": "Debe decir 1.19.2 (la de C:\\qdrant)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const v = pm.response.json();",
+                  "pm.test('es Qdrant', () => pm.expect(v.title).to.include('qdrant'));",
+                  "console.log('Version:', v.version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/healthz",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "pm.test('pasa el chequeo', () => pm.expect(pm.response.text()).to.include('passed'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Coleccion y alias",
+      "description": "La coleccion del catalogo y el alias que usa la busqueda.",
+      "item": [
+        {
+          "name": "Listar colecciones",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/collections",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "const names = r.collections.map(c => c.name);",
+                  "pm.test('existe la coleccion del catalogo', () => pm.expect(names).to.include(pm.environment.get('collection')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Alias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/aliases",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "aliases"
+              ]
+            },
+            "description": "El indexador (OfferIndexer) mueve el alias al terminar. Sin alias, la busqueda cae al catalogo de MySQL."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "const a = r.aliases.find(x => x.alias_name === pm.environment.get('alias'));",
+                  "pm.test('el alias existe', () => pm.expect(a).to.not.be.undefined);",
+                  "pm.test('el alias apunta a la coleccion vigente', () => pm.expect(a.collection_name).to.eql(pm.environment.get('collection')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Detalle de la coleccion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{collection}}",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{collection}}"
+              ]
+            },
+            "description": "points_count = ofertas indexadas (una por actividad en casa y una por actividad x lugar). Al 22-oct: 345."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('estado green', () => pm.expect(r.status).to.eql('green'));",
+                  "pm.test('vectores de 1024 (bge-m3) con coseno', () => {",
+                  "  pm.expect(r.config.params.vectors.size).to.eql(1024);",
+                  "  pm.expect(r.config.params.vectors.distance).to.eql('Cosine');",
+                  "});",
+                  "pm.test('tiene puntos', () => pm.expect(r.points_count).to.be.above(0));",
+                  "const idx = Object.keys(r.payload_schema);",
+                  "pm.test('indices de los filtros', () => pm.expect(idx).to.include.members(['activity_id','dimension','location_scope','cost_mxn_pp','duration_min','dayparts','is_outdoor','weather_ok','location']));",
+                  "pm.environment.set('points_count', r.points_count);",
+                  "console.log('Ofertas indexadas:', r.points_count);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Conteos y revision de datos",
+      "description": "Que se vectorizo todo el catalogo y con datos completos.",
+      "item": [
+        {
+          "name": "Total de ofertas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/count",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "count"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exact\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('mas de 0', () => pm.expect(r.count).to.be.above(0));",
+                  "console.log('Total:', r.count);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Actividades distintas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/facet",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "facet"
+              ]
+            },
+            "description": "Debe coincidir con las actividades validas de MySQL (al 22-oct: 86).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"activity_id\",\n  \"exact\": true,\n  \"limit\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "console.log('Actividades distintas:', r.hits.length);",
+                  "pm.test('hay actividades', () => pm.expect(r.hits.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas por alcance (HOME / CITY)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/facet",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "facet"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"location_scope\",\n  \"exact\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "r.hits.forEach(h => console.log(h.value, h.count));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas por dimension del bienestar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/facet",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "facet"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"dimension\",\n  \"exact\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "r.hits.forEach(h => console.log(h.value, h.count));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas sin text_hash (debe ser 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/count",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "count"
+              ]
+            },
+            "description": "El indexador guarda el hash del texto para no volver a vectorizar lo que no cambio.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exact\": true,\n  \"filter\": {\n    \"must\": [\n      {\n        \"is_empty\": {\n          \"key\": \"text_hash\"\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('todas tienen text_hash', () => pm.expect(r.count).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas de la ciudad sin ubicacion (debe ser 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/count",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "count"
+              ]
+            },
+            "description": "Sin location, el filtro de 15 km (RN-31) no las encontraria.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"exact\": true,\n  \"filter\": {\n    \"must\": [\n      {\n        \"key\": \"location_scope\",\n        \"match\": {\n          \"value\": \"CITY\"\n        }\n      },\n      {\n        \"is_empty\": {\n          \"key\": \"location\"\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('todas las de la ciudad tienen location', () => pm.expect(r.count).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Ver ofertas",
+      "description": "Leer puntos con su payload y su vector.",
+      "item": [
+        {
+          "name": "Primeras 10 ofertas (sin vector)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/scroll",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "scroll"
+              ]
+            },
+            "description": "Guarda el primer id en point_id y su actividad en activity_id para las siguientes.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": 10,\n  \"with_payload\": true,\n  \"with_vector\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('trae puntos', () => pm.expect(r.points.length).to.be.above(0));",
+                  "pm.environment.set('point_id', r.points[0].id);",
+                  "pm.environment.set('activity_id', r.points[0].payload.activity_id);",
+                  "console.log('point_id guardado:', r.points[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Una oferta con su vector",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/{{point_id}}",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "{{point_id}}"
+              ]
+            },
+            "description": "Ejecutar despues de 'Primeras 10 ofertas'. Qdrant normaliza los vectores con coseno (norma ~1)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "pm.test('vector de 1024 numeros', () => pm.expect(r.vector.length).to.eql(1024));",
+                  "const norm = Math.sqrt(r.vector.reduce((s, x) => s + x * x, 0));",
+                  "console.log('Norma del vector:', norm.toFixed(4));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Todas las ofertas de una actividad",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/scroll",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "scroll"
+              ]
+            },
+            "description": "Una actividad en casa da 1 oferta; en la ciudad, una por cada lugar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": 100,\n  \"with_payload\": [\n    \"activity_id\",\n    \"place_id\",\n    \"place_name\",\n    \"borough\",\n    \"location_scope\"\n  ],\n  \"with_vector\": false,\n  \"filter\": {\n    \"must\": [\n      {\n        \"key\": \"activity_id\",\n        \"match\": {\n          \"value\": {{activity_id}}\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "console.log('Lugares de la actividad:', r.points.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas en casa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/scroll",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "scroll"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": 50,\n  \"with_payload\": true,\n  \"with_vector\": false,\n  \"filter\": {\n    \"must\": [\n      {\n        \"key\": \"location_scope\",\n        \"match\": {\n          \"value\": \"HOME\"\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Busqueda semantica",
+      "description": "Lo mismo que hace VectorCandidateSource: vectorizar y buscar.",
+      "item": [
+        {
+          "name": "Ollama: vectorizar la consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{ollama_url}}/api/embed",
+              "host": [
+                "{{ollama_url}}"
+              ],
+              "path": [
+                "api",
+                "embed"
+              ]
+            },
+            "description": "Cambia query_text en el entorno. Usa el mismo formato que QueryText (4 lineas). Guarda el vector en query_vector.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{embed_model}}\",\n  \"input\": \"{{query_text}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const v = pm.response.json().embeddings[0];",
+                  "pm.test('vector de 1024', () => pm.expect(v.length).to.eql(1024));",
+                  "pm.environment.set('query_vector', JSON.stringify(v));",
+                  "console.log('query_vector guardado');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar: mejor oferta por actividad",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/query/groups",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "query",
+                "groups"
+              ]
+            },
+            "description": "Ejecutar despues de 'Ollama: vectorizar la consulta'. Una oferta por actividad, de la mas a la menos parecida.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": {{query_vector}},\n  \"group_by\": \"activity_id\",\n  \"group_size\": 1,\n  \"limit\": 10,\n  \"with_payload\": [\n    \"activity_id\",\n    \"dimension\",\n    \"location_scope\",\n    \"place_name\",\n    \"borough\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "r.groups.forEach(g => console.log(g.id, g.hits[0].score.toFixed(3), JSON.stringify(g.hits[0].payload)));",
+                  "pm.test('hay resultados', () => pm.expect(r.groups.length).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buscar con filtro duro (ciudad, 15 km de Coyoacan, lluvia)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/query/groups",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "query",
+                "groups"
+              ]
+            },
+            "description": "Como HardFilter: alcance, radio de 15 km y clima (bajo techo o que acepte lluvia).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": {{query_vector}},\n  \"group_by\": \"activity_id\",\n  \"group_size\": 1,\n  \"limit\": 10,\n  \"with_payload\": [\n    \"activity_id\",\n    \"dimension\",\n    \"place_name\",\n    \"borough\",\n    \"is_outdoor\"\n  ],\n  \"filter\": {\n    \"must\": [\n      {\n        \"key\": \"location_scope\",\n        \"match\": {\n          \"any\": [\n            \"CITY\"\n          ]\n        }\n      },\n      {\n        \"key\": \"location\",\n        \"geo_radius\": {\n          \"center\": {\n            \"lat\": 19.3467,\n            \"lon\": -99.1617\n          },\n          \"radius\": 15000\n        }\n      },\n      {\n        \"should\": [\n          {\n            \"key\": \"is_outdoor\",\n            \"match\": {\n              \"value\": false\n            }\n          },\n          {\n            \"key\": \"weather_ok\",\n            \"match\": {\n              \"any\": [\n                \"RAINY\",\n                \"ANY\"\n              ]\n            }\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "r.groups.forEach(g => console.log(g.id, g.hits[0].score.toFixed(3), JSON.stringify(g.hits[0].payload)));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ofertas parecidas a point_id",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{qdrant_url}}/collections/{{alias}}/points/query",
+              "host": [
+                "{{qdrant_url}}"
+              ],
+              "path": [
+                "collections",
+                "{{alias}}",
+                "points",
+                "query"
+              ]
+            },
+            "description": "Busca con el vector guardado de una oferta. La mas parecida suele ser la misma actividad en otro lugar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"{{point_id}}\",\n  \"limit\": 5,\n  \"with_payload\": [\n    \"activity_id\",\n    \"place_name\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json().result;",
+                  "r.points.forEach(p => console.log(p.score.toFixed(3), JSON.stringify(p.payload)));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

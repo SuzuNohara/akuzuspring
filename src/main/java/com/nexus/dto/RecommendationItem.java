@@ -10,6 +10,10 @@ import java.time.Instant;
  * @param category codigo de la dimension ({@code IdeaCategory}); {@code categoryLabel} es el texto
  * @param scope {@code HOME} o {@code CITY}
  * @param placeName lugar en la ciudad; {@code null} en casa
+ * @param placeAddress [kb-lugares] calle y numero del lugar; {@code null} en casa o si no se conoce
+ * @param placeNeighborhood colonia del lugar
+ * @param placeWebsite sitio web del lugar
+ * @param placePhone telefono del lugar
  * @param startsAt inicio sugerido (inicio de la franja)
  * @param endsAt inicio + duracion promedio, sin pasar del fin de la franja
  */
@@ -22,6 +26,10 @@ public record RecommendationItem(
         String scope,
         String placeName,
         String boroughName,
+        String placeAddress,
+        String placeNeighborhood,
+        String placeWebsite,
+        String placePhone,
         int durationMinutes,
         int costPerPersonMxn,
         String reason,

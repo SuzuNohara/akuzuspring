@@ -6,8 +6,9 @@ import com.nexus.integration.ollama.OllamaClient;
 import com.nexus.integration.qdrant.QdrantClient;
 import com.nexus.integration.qdrant.QdrantFilter;
 import com.nexus.integration.qdrant.QdrantHit;
+import com.nexus.repository.ActivityPlaceView;
 import com.nexus.repository.ActivityRepository;
-import com.nexus.service.ProximityFilter;
+import com.nexus.repository.PlaceRepository;
 import com.nexus.service.ProximityFilter.Coordinates;
 import com.nexus.service.recommendation.agent.HardFilter;
 import com.nexus.service.recommendation.agent.QueryText;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Primary;
@@ -31,7 +33,12 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>[t06b-agente-java] Vectoriza {@link QueryText} con el modelo de embeddings, recorre la
  * {@link RelaxationLadder} contando con el filtro duro de cada escalon ({@link HardFilter}: franja,
  * distancia y clima nunca se relajan) hasta que haya ofertas, y busca la mejor oferta de cada
- * actividad en el alias vigente. El lugar y la distancia salen del payload.
+ * actividad en el alias vigente.
+ *
+ * <p>[kb-lugares] U7 - Qdrant solo decide la actividad: el lugar se vuelve a elegir entre todos los
+ * enlaces de MySQL con {@link CatalogCandidateSource#nearestValidPlace} (el mas cercano, o uno
+ * popular con "Sin zona"). Si en MySQL ya no hay ningun lugar valido (p. ej. Qdrant aun no termina
+ * de reindexar y el del payload se borro), la actividad se descarta (R1).
  *
  * <p>Con el agente apagado, si Ollama o Qdrant fallan, o si ningun escalon tiene ofertas, la
  * seleccion completa sale de {@link CatalogCandidateSource} (R8); si Qdrant no junta {@code n}, el
@@ -49,18 +56,24 @@ public class VectorCandidateSource implements CandidateSource {
     private final QdrantClient qdrant;
     private final CatalogCandidateSource catalog;
     private final AgentProperties properties;
+    private final PlaceRepository places;
+    private final RandomGenerator random;
 
     public VectorCandidateSource(
             ActivityRepository activities,
             OllamaClient ollama,
             QdrantClient qdrant,
             CatalogCandidateSource catalog,
-            AgentProperties properties) {
+            AgentProperties properties,
+            PlaceRepository places,
+            RandomGenerator random) {
         this.activities = activities;
         this.ollama = ollama;
         this.qdrant = qdrant;
         this.catalog = catalog;
         this.properties = properties;
+        this.places = places;
+        this.random = random;
     }
 
     /**
@@ -119,8 +132,8 @@ public class VectorCandidateSource implements CandidateSource {
     }
 
     /**
-     * Actividades de MySQL en el orden de Qdrant, una por actividad; las que ya no existen se
-     * ignoran (S10).
+     * Actividades de MySQL en el orden de Qdrant, una por actividad, con su lugar de MySQL; las que
+     * ya no existen se ignoran (S10) y las de ciudad sin lugar valido se descartan (R1).
      */
     private List<Candidate> candidatesOf(List<QdrantHit> hits, List<Coordinates> references) {
         Map<Long, QdrantHit> byActivity = new LinkedHashMap<>();
@@ -129,31 +142,43 @@ public class VectorCandidateSource implements CandidateSource {
         }
         Map<Long, Activity> found = activities.findAllById(byActivity.keySet()).stream()
                 .collect(Collectors.toMap(Activity::getId, Function.identity()));
-        List<Candidate> result = new ArrayList<>();
+        List<Hit> result = new ArrayList<>();
         byActivity.forEach((activityId, hit) -> {
             Activity a = found.get(activityId);
             if (a != null) {
-                result.add(new Candidate(a, placeOf(hit.payload(), references), hit.score()));
+                result.add(new Hit(a, hit.payload().get("place_id") != null, hit.score()));
             }
         });
-        return result;
+        return relocate(result, references);
     }
 
-    /** Lugar del payload con la distancia a la referencia mas lejana; {@code null} en casa. */
-    @SuppressWarnings("unchecked")
-    private static PlaceChoice placeOf(Map<String, Object> payload, List<Coordinates> references) {
-        Object placeId = payload.get("place_id");
-        if (placeId == null) {
-            return null;
+    /** Una actividad encontrada en Qdrant; {@code inCity} si su oferta traia lugar. */
+    private record Hit(Activity activity, boolean inCity, double score) {}
+
+    /**
+     * [kb-lugares] U7 - Lugar de MySQL de cada actividad de ciudad (una sola consulta); sin lugar
+     * valido, la actividad no sale (R1).
+     *
+     * @implNote O(h + p log p) con h candidatas y p lugares de las de ciudad.
+     */
+    private List<Candidate> relocate(List<Hit> found, List<Coordinates> references) {
+        List<Long> cityIds = found.stream().filter(Hit::inCity).map(h -> h.activity().getId()).toList();
+        Map<Long, List<ActivityPlaceView>> placesByActivity = cityIds.isEmpty()
+                ? Map.of()
+                : places.findByActivityIds(cityIds).stream()
+                        .collect(Collectors.groupingBy(ActivityPlaceView::getActivityId));
+        List<Candidate> result = new ArrayList<>();
+        for (Hit h : found) {
+            if (!h.inCity()) {
+                result.add(new Candidate(h.activity(), null, h.score()));
+                continue;
+            }
+            List<ActivityPlaceView> options = placesByActivity.getOrDefault(h.activity().getId(), List.of());
+            CatalogCandidateSource.nearestValidPlace(options, references, random).ifPresentOrElse(
+                    place -> result.add(new Candidate(h.activity(), place, h.score())),
+                    () -> log.debug("[kb-lugares] Actividad {} sin lugar valido en MySQL; se descarta", h.activity().getId()));
         }
-        Map<String, Object> location = (Map<String, Object>) payload.get("location");
-        Coordinates where = new Coordinates(
-                ((Number) location.get("lat")).doubleValue(), ((Number) location.get("lon")).doubleValue());
-        Double distanceKm = references.isEmpty()
-                ? null
-                : references.stream().mapToDouble(r -> ProximityFilter.distanceKm(where, r)).max().orElse(0);
-        return new PlaceChoice(
-                longOf(placeId), (String) payload.get("place_name"), (String) payload.get("borough"), distanceKm);
+        return result;
     }
 
     private static Long longOf(Object value) {

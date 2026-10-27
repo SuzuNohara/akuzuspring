@@ -12,10 +12,11 @@ import org.hibernate.annotations.Immutable;
 
 /**
  * RF-36 - Lugar del catalogo donde puede ocurrir una actividad (tabla {@code places},
- * add_kb_tables.sql). Solo lectura; se mapean las columnas que usa el filtro de proximidad.
+ * add_kb_tables.sql). Solo lectura; se mapean las columnas que usa el filtro de proximidad y,
+ * desde [kb-lugares] U8, las que ve la pareja en la tarjeta y en el evento.
  *
- * <p>Mientras no llegue el catalogo real, las coordenadas son las del centro de la alcaldia
- * ({@code source = 'approx-borough'}), ver seed_boroughs_places.sql.
+ * <p>[kb-lugares] Lugares reales de la CDMX (OpenStreetMap e INEGI DENUE), ver
+ * seed_places_kb_final.sql. Direccion, colonia, web y telefono pueden faltar.
  */
 @Entity
 @Immutable
@@ -47,4 +48,16 @@ public class Place {
     /** [t06b-agente-java] Ambiente del lugar ({@code QUIET|SOCIAL}...); se suma al de la actividad. */
     @Column(nullable = false)
     private String ambience;
+
+    /** [kb-lugares] U8 - Calle y numero; {@code null} si no se conoce. */
+    private String address;
+
+    /** [kb-lugares] U8 - Colonia. */
+    private String neighborhood;
+
+    /** [kb-lugares] U8 - Sitio web tal como viene de la fuente (la app solo abre http/https). */
+    private String website;
+
+    /** [kb-lugares] U8 - Telefono tal como viene de la fuente. */
+    private String phone;
 }

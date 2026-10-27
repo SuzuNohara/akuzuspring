@@ -38,6 +38,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +67,10 @@ public class RecommendationService {
 
     private static final int MIN_SLOT_MINUTES = 60;
     private static final String AT_HOME = "En casa";
+    /** [kb-lugares] Tope de {@code events.location} y de {@code CreateEventRequest.location}. */
+    static final int EVENT_LOCATION_MAX = 500;
+    private static final String SEPARATOR = " · ";
+    private static final String ELLIPSIS = "…";
 
     private final LinkRepository links;
     private final UserRepository users;
@@ -336,11 +341,45 @@ public class RecommendationService {
         Instant end = endOf(a, r.getRequest());
         // La tarjeta dice lo que cabe en el horario: el evento se recorta al hueco (H22).
         int minutes = (int) Duration.between(start, end).toMinutes();
+        Optional<Place> at = Optional.ofNullable(place);
         return new RecommendationItem(
                 r.getId(), a.getId(), a.getTitle(), category.name(), category.label(), a.getLocationScope(),
-                place == null ? null : place.getName(), place == null ? null : place.getBorough(),
+                at.map(Place::getName).orElse(null), at.map(Place::getBorough).orElse(null),
+                at.map(Place::getAddress).orElse(null), at.map(Place::getNeighborhood).orElse(null),
+                at.map(Place::getWebsite).orElse(null), at.map(Place::getPhone).orElse(null),
                 minutes, a.getCostMxnPp(), r.getReason(), r.getReasonSource(),
                 start, end);
+    }
+
+    /**
+     * [kb-lugares] U8 - Ubicacion del evento: {@code nombre · direccion, colonia · alcaldia}, sin lo
+     * que falte; "En casa" sin lugar. Si no cabe en {@link #EVENT_LOCATION_MAX}, primero se quita la
+     * colonia y luego se corta la direccion; el nombre y la alcaldia nunca se cortan (R2).
+     */
+    static String eventLocation(Place place) {
+        if (place == null) {
+            return AT_HOME;
+        }
+        String full = joinLocation(place.getName(), joinNonBlank(", ", place.getAddress(), place.getNeighborhood()),
+                place.getBorough());
+        if (full.length() <= EVENT_LOCATION_MAX) {
+            return full;
+        }
+        String withoutNeighborhood = joinLocation(place.getName(), place.getAddress(), place.getBorough());
+        if (withoutNeighborhood.length() <= EVENT_LOCATION_MAX) {
+            return withoutNeighborhood;
+        }
+        int room = EVENT_LOCATION_MAX - joinLocation(place.getName(), place.getBorough()).length() - SEPARATOR.length();
+        String address = room > 1 ? place.getAddress().substring(0, room - 1) + ELLIPSIS : null;
+        return joinLocation(place.getName(), address, place.getBorough());
+    }
+
+    private static String joinLocation(String... parts) {
+        return joinNonBlank(SEPARATOR, parts);
+    }
+
+    private static String joinNonBlank(String separator, String... parts) {
+        return Arrays.stream(parts).filter(p -> p != null && !p.isBlank()).collect(Collectors.joining(separator));
     }
 
     private static Instant endOf(Activity a, RecommendationRequest request) {
@@ -351,12 +390,11 @@ public class RecommendationService {
     /** Evento que nace de una opcion (invitacion individual o acuerdo en pareja). */
     public static CreateEventRequest toEvent(Recommendation rec, RecommendationRequest request) {
         Activity a = rec.getActivity();
-        Place place = rec.getPlace();
         return CreateEventRequest.builder()
                 .title(a.getTitle())
                 .startDateTime(request.getSlotStart().toString())
                 .endDateTime(endOf(a, request).toString())
-                .location(place == null ? AT_HOME : place.getName() + " · " + place.getBorough())
+                .location(eventLocation(rec.getPlace()))
                 .category(IdeaCategory.ofActivityType(a.getActivityType()).label())
                 .description(rec.getReason())
                 .activityId(a.getId())

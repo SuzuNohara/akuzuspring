@@ -3,11 +3,13 @@ package com.nexus.service.recommendation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -21,7 +23,9 @@ import com.nexus.integration.qdrant.QdrantFilter;
 import com.nexus.integration.qdrant.QdrantHit;
 import com.nexus.model.IdeaCategory;
 import com.nexus.model.Scope;
+import com.nexus.repository.ActivityPlaceView;
 import com.nexus.repository.ActivityRepository;
+import com.nexus.repository.PlaceRepository;
 import com.nexus.service.ProximityFilter.Coordinates;
 import com.nexus.service.recommendation.agent.QueryText;
 import java.time.Instant;
@@ -31,6 +35,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -50,15 +55,20 @@ class VectorCandidateSourceTest {
     private final OllamaClient ollama = mock(OllamaClient.class);
     private final QdrantClient qdrant = mock(QdrantClient.class);
     private final CatalogCandidateSource catalog = mock(CatalogCandidateSource.class);
+    private final PlaceRepository places = mock(PlaceRepository.class);
+    /** Lugares de MySQL de las actividades de ciudad ([kb-lugares] U7). */
+    private final List<ActivityPlaceView> placeRows = new ArrayList<>();
     private final Selection fromCatalog =
             new Selection(List.of(), EnumSet.noneOf(RelaxedFilter.class), SelectionSource.CATALOG);
 
     private VectorCandidateSource source(boolean enabled) {
-        return new VectorCandidateSource(activities, ollama, qdrant, catalog, AgentTestProperties.with(enabled, true));
+        return new VectorCandidateSource(
+                activities, ollama, qdrant, catalog, AgentTestProperties.with(enabled, true), places, new Random(42));
     }
 
     @BeforeEach
     void setUp() {
+        lenient().when(places.findByActivityIds(any())).thenReturn(placeRows);
         lenient().when(ollama.embed(anyString())).thenReturn(new float[] {0.5f});
         lenient().when(qdrant.count(eq(ALIAS), any())).thenReturn(10L);
         lenient().when(catalog.select(any(), any(), any(), anyInt())).thenReturn(fromCatalog);
@@ -129,6 +139,7 @@ class VectorCandidateSourceTest {
     @DisplayName("U7.3: should turn hits into candidates in Qdrant order with their place and distance")
     void shouldTurnHitsIntoCandidatesInQdrantOrderWithPlaceAndDistance() {
         givenHits(city(3, 30, 19.43, -99.14, 0.95), home(1, 0.90), home(2, 0.80));
+        placeRows.add(CatalogCandidateSourceTest.place(3, 30, 19.43, -99.14, 1.0));
 
         Selection s = source(true).select(query(Scope.ANY, null), CoupleContext.empty(), Set.of(), 3);
 
@@ -139,7 +150,7 @@ class VectorCandidateSourceTest {
         PlaceChoice place = s.candidates().get(0).place();
         assertThat(place.placeId()).isEqualTo(30L);
         assertThat(place.name()).isEqualTo("Lugar 30");
-        assertThat(place.borough()).isEqualTo("Coyoacán");
+        assertThat(place.borough()).isEqualTo("Cuauhtemoc");
         assertThat(place.distanceKm()).isBetween(0.5, 1.5);
         assertThat(s.candidates().get(1).place()).isNull();
     }
@@ -161,6 +172,8 @@ class VectorCandidateSourceTest {
     @DisplayName("U7.5: should return at most n, one per activity")
     void shouldReturnAtMostNOnePerActivity() {
         givenHits(city(4, 40, 19.43, -99.14, 0.9), city(4, 41, 19.44, -99.14, 0.85), home(1, 0.8), home(2, 0.7));
+        placeRows.add(CatalogCandidateSourceTest.place(4, 40, 19.43, -99.14, 1.0));
+        placeRows.add(CatalogCandidateSourceTest.place(4, 41, 19.44, -99.14, 9.0));
 
         Selection s = source(true).select(query(Scope.ANY, null), CoupleContext.empty(), Set.of(), 2);
 
@@ -208,5 +221,66 @@ class VectorCandidateSourceTest {
         ArgumentCaptor<QdrantFilter> filter = ArgumentCaptor.forClass(QdrantFilter.class);
         verify(qdrant).count(eq(ALIAS), filter.capture());
         assertThat(new ArrayList<>(filter.getValue().excludedActivityIds())).containsExactly(9L);
+    }
+
+    // [kb-lugares] U7 - El lugar final sale de todos los enlaces de MySQL, no del payload.
+
+    @Test
+    @DisplayName("[kb-lugares] P7.6: should swap the payload place for the nearest one in MySQL")
+    void shouldSwapThePayloadPlaceForTheNearestOneInMysql() {
+        givenHits(city(3, 50, 19.3500, -99.1620, 0.9));
+        placeRows.add(CatalogCandidateSourceTest.place(3, 50, 19.3500, -99.1620, 9.0)); // ~9.6 km
+        placeRows.add(CatalogCandidateSourceTest.place(3, 51, 19.4330, -99.1340, 1.0)); // junto al Zocalo
+
+        Selection s = source(true).select(query(Scope.CITY, null), CoupleContext.empty(), Set.of(), 1);
+
+        assertThat(s.candidates().get(0).place().placeId()).isEqualTo(51L);
+        assertThat(s.candidates().get(0).place().distanceKm()).isLessThan(1.0);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.7 (R1): should drop a candidate whose places are gone from MySQL")
+    void shouldDropACandidateWhosePlacesAreGoneFromMysql() {
+        givenHits(city(3, 60, 19.43, -99.14, 0.9), home(1, 0.8));
+
+        Selection s = source(true).select(query(Scope.ANY, null), CoupleContext.empty(), Set.of(), 2);
+
+        assertThat(s.candidates()).extracting(c -> c.activity().getId()).containsExactly(1L);
+        verify(catalog).select(any(), any(), eq(Set.of(1L)), eq(1));
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.8: should look up the places of every city candidate in a single query")
+    void shouldLookUpThePlacesOfEveryCityCandidateInASingleQuery() {
+        givenHits(city(3, 30, 19.43, -99.14, 0.9), city(4, 40, 19.43, -99.14, 0.8), home(1, 0.7));
+        placeRows.add(CatalogCandidateSourceTest.place(3, 30, 19.43, -99.14, 1.0));
+        placeRows.add(CatalogCandidateSourceTest.place(4, 40, 19.43, -99.14, 1.0));
+
+        source(true).select(query(Scope.ANY, null), CoupleContext.empty(), Set.of(), 3);
+
+        verify(places, times(1)).findByActivityIds(argThat(ids -> Set.copyOf(ids).equals(Set.of(3L, 4L))));
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.9: should not query MySQL places when every candidate is at home")
+    void shouldNotQueryMysqlPlacesWhenEveryCandidateIsAtHome() {
+        givenHits(home(1, 0.9), home(2, 0.8));
+
+        source(true).select(query(Scope.HOME, null), CoupleContext.empty(), Set.of(), 2);
+
+        verify(places, never()).findByActivityIds(any());
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] U7: without zone, should pick one of the most popular places without distance")
+    void shouldPickAPopularPlaceWithoutDistanceWithoutZone() {
+        givenHits(city(3, 30, 19.43, -99.14, 0.9));
+        placeRows.add(CatalogCandidateSourceTest.place(3, 30, 19.43, -99.14, 1.0));
+        RecommendationQuery noZone = new RecommendationQuery(Scope.CITY, 500, (IdeaCategory) null, START, END, List.of());
+
+        Selection s = source(true).select(noZone, CoupleContext.empty(), Set.of(), 1);
+
+        assertThat(s.candidates().get(0).place().placeId()).isEqualTo(30L);
+        assertThat(s.candidates().get(0).place().distanceKm()).isNull();
     }
 }

@@ -109,8 +109,8 @@ public class RatingService {
         return new RatingResponse(eventId, saved.getCreatedAt() != null ? saved.getCreatedAt() : now);
     }
 
-    /** Evento suelto, vigente y aprobado por los dos. */
-    private static boolean isDate(Event e) {
+    /** Evento suelto, vigente y aprobado por los dos (tambien lo usa CU43, {@code RatingHistoryService}). */
+    public static boolean isDate(Event e) {
         return e.getDeletedAt() == null
                 && !Boolean.TRUE.equals(e.getIsRecurring())
                 && e.getStatus() == EventStatus.CONFIRMED

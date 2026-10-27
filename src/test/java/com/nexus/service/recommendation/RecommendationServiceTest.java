@@ -29,6 +29,7 @@ import com.nexus.exception.BadRequestException;
 import com.nexus.exception.ConflictException;
 import com.nexus.exception.ForbiddenException;
 import com.nexus.integration.AgentTestProperties;
+import com.nexus.model.IdeaCategory;
 import com.nexus.model.ReasonSource;
 import com.nexus.model.RequestStatus;
 import com.nexus.model.Scope;
@@ -78,6 +79,7 @@ class RecommendationServiceTest {
     private final CandidateSource candidates = mock(CandidateSource.class);
     private final RecommendationComposer composer = mock(RecommendationComposer.class);
     private final CoupleContextService contexts = mock(CoupleContextService.class);
+    private final RatingHistoryService ratingHistory = mock(RatingHistoryService.class);
     private final MutualSlotChecker slots = mock(MutualSlotChecker.class);
     private final EventService events = mock(EventService.class);
     private final WeatherService weather = mock(WeatherService.class);
@@ -88,7 +90,7 @@ class RecommendationServiceTest {
     private RecommendationService service(boolean agentOn) {
         return new RecommendationService(
                 links, users, boroughs, places, requests, recommendations, candidates, composer,
-                AgentTestProperties.with(agentOn, true), contexts, slots, events, weather, CLOCK);
+                AgentTestProperties.with(agentOn, true), contexts, ratingHistory, slots, events, weather, CLOCK);
     }
 
     /** Lo que hacen las reglas: las primeras {@code expected} con la frase del catalogo. */
@@ -120,6 +122,7 @@ class RecommendationServiceTest {
         when(links.findActiveLinkByUserId(ANA)).thenReturn(Optional.of(link));
         when(slots.isMutualFree(ANA, SAM, START, END)).thenReturn(true);
         when(contexts.build(eq(ANA), any())).thenReturn(CoupleContext.empty());
+        when(ratingHistory.historyOf(any())).thenReturn(RatingHistoryService.RatingHistory.NONE);
         when(users.getReferenceById(ANA)).thenReturn(ana);
         when(weather.conditionFor(any())).thenReturn(WeatherCondition.UNKNOWN);
         when(composer.compose(any(), any(), anyList(), anyInt(), any()))
@@ -156,6 +159,28 @@ class RecommendationServiceTest {
         verify(candidates).select(any(), any(), anySet(), eq(30));
         verify(composer).compose(any(), any(), eq(List.of(plan)), eq(RecommendationService.STORED), any());
         assertThat(batch.items()).extracting(i -> i.reason()).containsExactly("frase 1");
+    }
+
+    @Test
+    @DisplayName("CU43: la planeacion en pareja con el agente tambien ordena por historial")
+    void coupleRequestIsRankedByHistory() {
+        Candidate social = new Candidate(activity(1, "Juego", "BOARD_GAME", "HOME", 60), null, 0.9);
+        Candidate nature = new Candidate(activity(2, "Picnic", "PICNIC", "CITY", 60), null, 0.8);
+        when(candidates.select(any(), any(), anySet(), anyInt()))
+                .thenReturn(new Selection(List.of(social, nature), Set.of(), SelectionSource.VECTOR));
+        when(composer.compose(any(), any(), anyList(), anyInt(), any())).thenReturn(new Composition(List.of(
+                new WrittenPick(social, 1, "Juego para platicar.", ReasonSource.AGENT),
+                new WrittenPick(nature, 2, "Picnic en el parque.", ReasonSource.AGENT)), null));
+        when(ratingHistory.historyOf(link)).thenReturn(new RatingHistoryService.RatingHistory(
+                5, java.util.Map.of(IdeaCategory.AMBIENTAL, 4.5)));
+        when(requests.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recommendations.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
+        CoupleCriteria criteria = new CoupleCriteria(
+                ZoneType.NONE, null, Scope.ANY, 500, Set.of(), START, END, List.of());
+
+        RecommendationBatch batch = service(true).requestForCouple(ANA, link, criteria);
+
+        assertThat(batch.items()).extracting(i -> i.reason()).containsExactly("Picnic en el parque.", "Juego para platicar.");
     }
 
     @Test
@@ -247,6 +272,39 @@ class RecommendationServiceTest {
             assertThat(saved).extracting(Recommendation::getShown)
                     .containsExactly(true, true, true, true, true, false, false, false);
             assertThat(batch.items()).extracting(i -> i.reason()).first().isEqualTo("Les gusta el cine: una funcion en Coyoacan.");
+        }
+
+        @Test
+        @DisplayName("CU43: con 3 citas evaluadas y el respaldo por catalogo, primero la dimension mejor calificada")
+        void catalogFallbackIsRankedByHistory() {
+            List<Candidate> mixed = List.of(
+                    new Candidate(activity(1, "Juego", "BOARD_GAME", "HOME", 60), null, 0),
+                    new Candidate(activity(2, "Nadar", "SWIM", "CITY", 60), null, 0),
+                    new Candidate(activity(3, "Cafe", "COFFEE", "CITY", 60), null, 0),
+                    new Candidate(activity(4, "Leer", "READING", "HOME", 60), null, 0),
+                    new Candidate(activity(5, "Escalar", "CLIMB", "CITY", 60), null, 0),
+                    new Candidate(activity(6, "Caminar", "WALK", "CITY", 60), null, 0));
+            when(candidates.select(any(), any(), eq(Set.of()), anyInt()))
+                    .thenReturn(new Selection(mixed, Set.of(), SelectionSource.CATALOG));
+            when(ratingHistory.historyOf(link)).thenReturn(new RatingHistoryService.RatingHistory(
+                    3, java.util.Map.of(IdeaCategory.FISICO, 5.0, IdeaCategory.SOCIAL, 2.0)));
+
+            RecommendationBatch batch = service.request(ANA, simple());
+
+            assertThat(saved).extracting(r -> r.getActivity().getId()).containsExactly(2L, 5L, 1L, 3L, 4L, 6L);
+            assertThat(saved).extracting(Recommendation::getPosition).containsExactly(1, 2, 3, 4, 5, 6);
+            assertThat(batch.items()).extracting(i -> i.activityId()).containsExactly(2L, 5L, 1L, 3L, 4L);
+            assertThat(batch.selectionSource()).isEqualTo("CATALOG");
+        }
+
+        @Test
+        @DisplayName("CU43: con menos de 3 citas evaluadas se guarda el orden del compositor")
+        void coldHistoryKeepsTheComposerOrder() {
+            when(ratingHistory.historyOf(link)).thenReturn(new RatingHistoryService.RatingHistory(2, java.util.Map.of()));
+
+            service.request(ANA, simple());
+
+            assertThat(saved).extracting(r -> r.getActivity().getId()).containsExactly(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L);
         }
 
         @Test

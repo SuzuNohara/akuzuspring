@@ -82,6 +82,7 @@ public class RecommendationService {
     private final RecommendationComposer composer;
     private final AgentProperties agent;
     private final CoupleContextService contexts;
+    private final RatingHistoryService ratingHistory;
     private final MutualSlotChecker slots;
     private final EventService events;
     private final WeatherService weather;
@@ -107,8 +108,9 @@ public class RecommendationService {
         CoupleContext context = contexts.build(userId, link);
         Selection selection = candidates.select(query, context, Set.of(), poolSize());
         Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
+        List<WrittenPick> picks = rankedByHistory(link, composition);
         RecommendationRequest saved = requests.save(newRequest(userId, link, p, category, borough.orElse(null)));
-        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, composition));
+        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, picks));
         log.info("Solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
         List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
@@ -129,6 +131,7 @@ public class RecommendationService {
         CoupleContext context = contexts.build(requesterId, link);
         Selection selection = candidates.select(query, context, Set.of(), poolSize());
         Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
+        List<WrittenPick> picks = rankedByHistory(link, composition);
         RecommendationRequest saved = requests.save(RecommendationRequest.builder()
                 .requester(users.getReferenceById(requesterId))
                 .link(link)
@@ -142,7 +145,7 @@ public class RecommendationService {
                 .slotStart(c.slotStart())
                 .slotEnd(c.slotEnd())
                 .build());
-        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, composition));
+        List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, picks));
         log.info("Planeacion en pareja, solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
         List<RecommendationItem> visible = stored.stream().filter(Recommendation::getShown).map(RecommendationService::toItem).toList();
@@ -156,6 +159,18 @@ public class RecommendationService {
      */
     private int poolSize() {
         return agent.enabled() ? agent.topK() : STORED;
+    }
+
+    /**
+     * [t06-cu43] CU43 / RF-42 - Con 3 o mas citas evaluadas (RN-35), primero las opciones de las
+     * dimensiones mejor calificadas por la pareja; con menos, el orden del compositor sin cambios.
+     * Vale igual con el agente o con el respaldo por catalogo, porque se aplica a la lista final.
+     */
+    private List<WrittenPick> rankedByHistory(Link link, Composition composition) {
+        RatingHistoryService.RatingHistory history = ratingHistory.historyOf(link);
+        log.info("Historial de calificaciones: {} citas evaluadas, flujo {}",
+                history.ratedDates(), history.isWarm() ? "con historial" : "en frio");
+        return RatingHistoryService.rankByHistory(composition.picks(), history);
     }
 
     /** CU40: el clima previsto en la franja entra a la seleccion (al aire libre solo si conviene). */
@@ -312,11 +327,11 @@ public class RecommendationService {
                 .build();
     }
 
-    /** [t06b-agente-java] Guarda la lista en el orden del compositor; cada frase con su fuente. */
-    private List<Recommendation> toRecommendations(RecommendationRequest request, Composition composition) {
+    /** [t06b-agente-java] Guarda la lista en el orden dado (CU43: ya con historial); cada frase con su fuente. */
+    private List<Recommendation> toRecommendations(RecommendationRequest request, List<WrittenPick> picks) {
         List<Recommendation> out = new ArrayList<>();
-        for (int i = 0; i < composition.picks().size(); i++) {
-            WrittenPick pick = composition.picks().get(i);
+        for (int i = 0; i < picks.size(); i++) {
+            WrittenPick pick = picks.get(i);
             Candidate c = pick.candidate();
             out.add(Recommendation.builder()
                     .request(request)

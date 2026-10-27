@@ -14,4 +14,7 @@ public interface DateRatingRepository extends JpaRepository<DateRating, Long> {
     /** Eventos que esta persona ya califico, de entre los dados. */
     @Query("SELECT r.eventId FROM DateRating r WHERE r.userId = :userId AND r.eventId IN :eventIds")
     List<Long> findRatedEventIds(@Param("userId") Long userId, @Param("eventIds") Collection<Long> eventIds);
+
+    /** [t06-cu43] Calificaciones de los dos en las citas dadas (CU43, historial de la pareja). */
+    List<DateRating> findByEventIdIn(Collection<Long> eventIds);
 }

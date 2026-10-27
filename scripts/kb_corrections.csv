@@ -1,0 +1,117 @@
+place_id,action,value,note
+azcapotzalco-parque-via-vallejo,RETYPE,MALL,centro comercial
+azcapotzalco-patio-claveria,RETYPE,MALL,centro comercial
+azcapotzalco-portal-vallejo,RETYPE,MALL,centro comercial
+azcapotzalco-plaza-azcapotzalco,RETYPE,MALL,centro comercial
+azcapotzalco-pabellon-azcapotzalco,RETYPE,MALL,centro comercial
+azcapotzalco-plaza-parque-jardin,RETYPE,MALL,centro comercial
+azcapotzalco-destino-azcapotzalco-2,RETYPE,MALL,centro comercial
+azcapotzalco-centro-comercial-pasaje-ferreria,RETYPE,MALL,centro comercial
+azcapotzalco-plaza-alco-la-raza,RETYPE,MALL,centro comercial
+benito-juarez-galerias-insurgentes,RETYPE,MALL,centro comercial
+benito-juarez-mitikah-centro-comercial,RETYPE,MALL,centro comercial
+benito-juarez-patio-universidad,RETYPE,MALL,centro comercial
+benito-juarez-city-shops-del-valle,RETYPE,MALL,centro comercial
+coyoacan-perisur,RETYPE,MALL,centro comercial
+cuajimalpa-de-morelos-centro-santa-fe,RETYPE,MALL,centro comercial
+cuajimalpa-de-morelos-zentrika,RETYPE,MALL,centro comercial
+cuajimalpa-de-morelos-pabellon-bosques-2,RETYPE,MALL,centro comercial
+cuajimalpa-de-morelos-plaza-cuajimalpa,RETYPE,MALL,centro comercial
+cuauhtemoc-plaza-forum-buenavista,RETYPE,MALL,centro comercial
+cuauhtemoc-centro-comercial-reforma-222,RETYPE,MALL,centro comercial
+cuauhtemoc-frikiplaza,RETYPE,MALL,centro comercial
+cuauhtemoc-plaza-insurgentes,RETYPE,MALL,centro comercial
+cuauhtemoc-plaza-la-rosa,RETYPE,MALL,centro comercial
+cuauhtemoc-barrio-alameda,RETYPE,MALL,centro comercial
+cuauhtemoc-pabellon-cuauhtemoc,RETYPE,MALL,centro comercial
+gustavo-a-madero-parque-tepeyac,RETYPE,MALL,centro comercial
+gustavo-a-madero-encuentro-fortuna,RETYPE,MALL,centro comercial
+gustavo-a-madero-puerta-aragon,RETYPE,MALL,centro comercial
+gustavo-a-madero-vista-norte,RETYPE,MALL,centro comercial
+gustavo-a-madero-atana-lindavista,RETYPE,MALL,centro comercial
+iztacalco-via-515,RETYPE,MALL,centro comercial
+iztapalapa-parque-tezontle,RETYPE,MALL,centro comercial
+iztapalapa-plaza-ermita,RETYPE,MALL,centro comercial
+iztapalapa-portal-churubusco,RETYPE,MALL,centro comercial
+iztapalapa-plaza-el-salado,RETYPE,MALL,centro comercial
+iztapalapa-plaza-aristeum,RETYPE,MALL,centro comercial
+iztapalapa-plaza-oriente,RETYPE,MALL,centro comercial
+miguel-hidalgo-pabellon-polanco-miguel-hidalgo-cdmx,RETYPE,MALL,centro comercial (nombre de DENUE)
+miguel-hidalgo-galerias-plaza-de-las-estrellas,RETYPE,MALL,centro comercial
+miguel-hidalgo-parque-duraznos,RETYPE,MALL,centro comercial
+miguel-hidalgo-plaza-parques-polanco,RETYPE,MALL,centro comercial
+miguel-hidalgo-plaza-carso,RETYPE,MALL,centro comercial
+tlalpan-plaza-inbursa-cuicuilco,RETYPE,MALL,centro comercial
+tlalpan-patio-tlalpan,RETYPE,MALL,centro comercial
+venustiano-carranza-encuentro-oceania,RETYPE,MALL,centro comercial
+alvaro-obregon-patio-santa-fe,RETYPE,MALL,centro comercial
+alvaro-obregon-plaza-opcion-loreto,RETYPE,MALL,centro comercial
+alvaro-obregon-samara-shops,RETYPE,MALL,centro comercial
+alvaro-obregon-plaza-exhibimex,RETYPE,MALL,centro comercial
+alvaro-obregon-patio-revolucion,RETYPE,MALL,centro comercial
+alvaro-obregon-pabellon-altavista,RETYPE,MALL,centro comercial
+alvaro-obregon-plaza-santa-teresa,RETYPE,MALL,centro comercial
+alvaro-obregon-plaza-escenaria,RETYPE,MALL,centro comercial
+alvaro-obregon-park-plaza,RETYPE,MALL,centro comercial
+gustavo-a-madero-parque-lindavista-4,RETYPE,MALL,centro comercial marcado como heladeria
+iztapalapa-zentralia-churubusco,RETYPE,MALL,centro comercial marcado como trampolin
+azcapotzalco-9553-mega-serviplaza-el-rosario-cdmx,EXCLUDE,,local de servicio sin plan para pareja
+benito-juarez-la-side-spa,EXCLUDE,,spa (sin actividad)
+benito-juarez-plaza-universidad-tienda,EXCLUDE,,tienda
+cuajimalpa-de-morelos-santa-fe,EXCLUDE,,nombre ambiguo de DENUE
+cuajimalpa-de-morelos-cuajimalpa,EXCLUDE,,nombre ambiguo de DENUE
+cuauhtemoc-valenti-mesones-123,EXCLUDE,,local sin plan para pareja
+cuauhtemoc-oxxo-suc-504sg-plaza-juarez-i-mex,EXCLUDE,,tienda de conveniencia
+cuauhtemoc-uruguay,EXCLUDE,,nombre ambiguo de DENUE
+iztacalco-farmacias-del-ahorro-cmn-mxrb-plaza-churubusco,EXCLUDE,,farmacia
+iztapalapa-antenas,EXCLUDE,,nombre ambiguo de DENUE
+iztapalapa-administracion-plaza-via-san-juan-fibra-hd,EXCLUDE,,oficina de administracion
+iztapalapa-administracion-de-plaza-zaragoza,EXCLUDE,,oficina de administracion
+iztapalapa-149-la-comer-iztapalapa-las-torres,EXCLUDE,,supermercado
+la-magdalena-contreras-administracion-pasaje-san-jeronimo,EXCLUDE,,oficina de administracion
+la-magdalena-contreras-administracion-plaza-luis-cabrera,EXCLUDE,,oficina de administracion
+miguel-hidalgo-07512-el-globo-isla-plaza-lilas,EXCLUDE,,panaderia de cadena
+milpa-alta-temazcal-omexochilt,EXCLUDE,,temazcal (sin actividad; posible actividad futura)
+tlahuac-papel-picado,EXCLUDE,,tienda
+venustiano-carranza-banos-medicinales-del-penon,EXCLUDE,,banos publicos
+xochimilco-oxxo-suc-50ary-plaza-arenal-mex,EXCLUDE,,tienda de conveniencia
+xochimilco-periodicos-plaza-vaqueritos,EXCLUDE,,puesto de periodicos
+coyoacan-marisqueria-del-valle-cielo-abierto,RETYPE,RESTAURANT,restaurante marcado como OTHER
+xochimilco-antojitos-xochimilco,RETYPE,RESTAURANT,restaurante marcado como OTHER
+la-magdalena-contreras-cafeteria-la-cruz,RETYPE,CAFE,cafeteria marcada como OTHER
+alvaro-obregon-38512-starbucks-garden-santa-fe,RETYPE,CAFE,cafeteria marcada como OTHER
+milpa-alta-centro-recreativo-la-poza,RETYPE,POOL,centro recreativo con albercas (revisar)
+tlahuac-dental-selene,EXCLUDE,,consultorio dental marcado como zoologico
+la-magdalena-contreras-acuario-oscars,EXCLUDE,,tienda de peces (DENUE)
+milpa-alta-acuario-tecomitl,EXCLUDE,,tienda de peces (DENUE)
+miguel-hidalgo-acuario-inbursa,RETYPE,AQUARIUM,acuario: no es zoologico (sin actividad todavia)
+miguel-hidalgo-acuario-interactivo-inbursa,RETYPE,AQUARIUM,acuario: no es zoologico (sin actividad todavia)
+cuajimalpa-de-morelos-pista-de-hielo,RETYPE,ICE_RINK,pista de hielo marcada como estadio
+cuauhtemoc-arena-mexico,RETYPE,ARENA,arena de lucha: que no salga como estadio de partido
+cuauhtemoc-arena-mexico,LINK,noche-de-lucha-libre,arena de lucha libre
+cuauhtemoc-arena-coliseo,RETYPE,ARENA,arena de lucha marcada como centro deportivo
+cuauhtemoc-arena-coliseo,LINK,noche-de-lucha-libre,arena de lucha libre
+azcapotzalco-plaza-azcapotzalco-2,EXCLUDE,,duplicado de la plaza (ya es MALL)
+tlalpan-patio-tlalpan-7,EXCLUDE,,duplicado de la plaza (ya es MALL)
+tlalpan-jardin-cervecero,RETYPE,BAR,jardin cervecero marcado como antro
+alvaro-obregon-k1-speed-santa-fe,RETYPE,KARTING,pista de karts
+milpa-alta-restaurante-la-cabana-2,RETYPE,RESTAURANT,restaurante marcado como ruta de senderismo
+milpa-alta-teoca,RETYPE,PEAK,volcan: para ascenso y mirador
+milpa-alta-volcan-tulmiac,RETYPE,PEAK,volcan: para ascenso y mirador
+tlalpan-xitle,RETYPE,PEAK,volcan: para ascenso y mirador
+cuauhtemoc-miniso-torre-latinoamericana,EXCLUDE,,tienda marcada como atraccion
+coyoacan-panam-coyoacan,EXCLUDE,,zapateria marcada como atraccion
+xochimilco-xochimilco-3,EXCLUDE,,nombre ambiguo de DENUE
+tlahuac-restaurante-mixquic,RETYPE,RESTAURANT,restaurante marcado como atraccion
+xochimilco-embarcadero-las-flores-2,EXCLUDE,,duplicado del embarcadero
+xochimilco-embarcadero-cuemanco-2,EXCLUDE,,duplicado del embarcadero
+xochimilco-embarcadero-nuevo-nativitas,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-las-flores,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-cuemanco,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-fernando-celada,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-zacapa,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-salitre,LINK,paseo-en-trajinera,embarcadero
+xochimilco-embarcadero-puente-de-urrutia,LINK,paseo-en-trajinera,embarcadero
+xochimilco-pista-olimpica-de-remo-y-canotaje-virgilio-uribe,LINK,remo-en-el-lago,pista de remo de Cuemanco
+tlahuac-parque-lago-de-los-reyes,LINK,remo-en-el-lago,lago con lanchas
+xochimilco-recorridos-en-kayak-xochimilco,LINK,remo-en-el-lago,kayak en los canales

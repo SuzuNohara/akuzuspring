@@ -17,7 +17,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,8 +46,8 @@ class CatalogCandidateSourceTest {
 
     @BeforeEach
     void setUp() {
-        source = new CatalogCandidateSource(activities, places);
-        when(activities.findAll()).thenReturn(catalog);
+        source = new CatalogCandidateSource(activities, places, new Random(42));
+        lenient().when(activities.findAll()).thenReturn(catalog);
         lenient().when(places.findByActivityIds(anyCollection())).thenReturn(placeRows);
     }
 
@@ -55,6 +59,10 @@ class CatalogCandidateSourceTest {
     }
 
     private static ActivityPlaceView place(long activityId, long placeId, double lat, double lon) {
+        return place(activityId, placeId, lat, lon, null);
+    }
+
+    static ActivityPlaceView place(long activityId, long placeId, double lat, double lon, Double score) {
         return new ActivityPlaceView() {
             public Long getActivityId() { return activityId; }
             public Long getPlaceId() { return placeId; }
@@ -62,6 +70,7 @@ class CatalogCandidateSourceTest {
             public String getBorough() { return "Cuauhtemoc"; }
             public Double getLat() { return lat; }
             public Double getLon() { return lon; }
+            public Double getScore() { return score; }
         };
     }
 
@@ -213,5 +222,62 @@ class CatalogCandidateSourceTest {
         Selection s = source.select(query(Scope.HOME, 0, null, List.of()), CoupleContext.empty(), Set.of(), 1);
 
         assertThat(ids(s)).containsExactly(2L);
+    }
+
+    // [kb-lugares] U7 - Eleccion del lugar con la popularidad (places.score).
+
+    @Test
+    @DisplayName("[kb-lugares] P7.1: con referencias elige el lugar mas cercano a 15 km o menos")
+    void nearestWithinRadius() {
+        List<ActivityPlaceView> options = List.of(place(1, 10, 19.3500, -99.1620, 99.0), place(1, 11, 19.4330, -99.1340, 1.0));
+
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1));
+
+        assertThat(chosen).map(PlaceChoice::placeId).contains(11L);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.2: a la misma distancia gana el mas popular")
+    void sameDistanceMostPopularWins() {
+        List<ActivityPlaceView> options = List.of(place(1, 10, 19.4330, -99.1340, 2.0), place(1, 11, 19.4330, -99.1340, 8.0));
+
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1));
+
+        assertThat(chosen).map(PlaceChoice::placeId).contains(11L);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.3: si ningun lugar esta a 15 km o menos, no hay lugar")
+    void noPlaceWithinRadius() {
+        List<ActivityPlaceView> options = List.of(place(1, 20, 19.2571, -99.1036, 50.0));
+
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.4: Sin zona elige al azar entre los 5 mas populares")
+    void noZonePicksAmongTheFiveMostPopular() {
+        List<ActivityPlaceView> options = LongStream.rangeClosed(1, 8)
+                .mapToObj(i -> place(1, i, 19.35, -99.16, (double) i))
+                .toList();
+
+        Set<Long> picked = LongStream.range(0, 50)
+                .mapToObj(seed -> CatalogCandidateSource.nearestValidPlace(options, List.of(), new Random(seed)))
+                .map(choice -> choice.orElseThrow().placeId())
+                .collect(Collectors.toSet());
+
+        assertThat(picked).isSubsetOf(4L, 5L, 6L, 7L, 8L).hasSizeGreaterThan(1);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P7.5: Sin zona con menos de 5 lugares elige entre esos y sin distancia")
+    void noZoneWithFewPlaces() {
+        List<ActivityPlaceView> options = List.of(place(1, 1, 19.35, -99.16, null), place(1, 2, 19.35, -99.16, 3.0), place(1, 3, 19.35, -99.16, 1.0));
+
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(), new Random(7));
+
+        assertThat(chosen).map(PlaceChoice::placeId).get().isIn(1L, 2L, 3L);
+        assertThat(chosen).map(PlaceChoice::distanceKm).isEmpty();
+        assertThat(CatalogCandidateSource.nearestValidPlace(List.of(), List.of(), new Random(7))).isEmpty();
     }
 }

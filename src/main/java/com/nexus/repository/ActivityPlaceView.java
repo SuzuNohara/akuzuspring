@@ -14,4 +14,7 @@ public interface ActivityPlaceView {
     Double getLat();
 
     Double getLon();
+
+    /** [kb-lugares] Popularidad del lugar ({@code places.score}); {@code null} sin dato. */
+    Double getScore();
 }

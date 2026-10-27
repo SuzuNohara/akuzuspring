@@ -6,15 +6,18 @@ import static org.mockito.Mockito.when;
 
 import com.nexus.entity.Activity;
 import com.nexus.entity.Preference;
+import com.nexus.integration.AgentTestProperties;
 import com.nexus.model.IdeaCategory;
 import com.nexus.repository.ActivityRepository;
 import com.nexus.repository.OfferPlaceView;
 import com.nexus.repository.PlaceRepository;
 import com.nexus.service.recommendation.agent.OfferCatalog.CatalogLoad;
 import com.nexus.service.recommendation.agent.OfferCatalog.Skipped;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +26,7 @@ class OfferCatalogTest {
 
     private final ActivityRepository activities = mock(ActivityRepository.class);
     private final PlaceRepository places = mock(PlaceRepository.class);
-    private final OfferCatalog catalog = new OfferCatalog(activities, places);
+    private final OfferCatalog catalog = new OfferCatalog(activities, places, AgentTestProperties.defaults());
 
     static Activity.ActivityBuilder activity(long id, String scope) {
         return Activity.builder()
@@ -46,16 +49,28 @@ class OfferCatalogTest {
     }
 
     static OfferPlaceView link(long activityId, long placeId, Double lat, Double lon) {
+        return link(activityId, placeId, lat, lon, "Coyoacán", null);
+    }
+
+    static OfferPlaceView link(long activityId, long placeId, Double lat, Double lon, String borough, Double score) {
         return new OfferPlaceView() {
             public Long getActivityId() { return activityId; }
             public Long getPlaceId() { return placeId; }
             public String getName() { return "Lugar " + placeId; }
-            public String getBorough() { return "Coyoacán"; }
+            public String getBorough() { return borough; }
             public Double getLat() { return lat; }
             public Double getLon() { return lon; }
             public String getAmbience() { return "QUIET|OUTDOOR"; }
             public Integer getCostOverride() { return null; }
+            public Double getScore() { return score; }
         };
+    }
+
+    /** {@code n} enlaces de la actividad 2 en una alcaldia; el lugar {@code base + i} tiene score {@code i}. */
+    private static List<OfferPlaceView> ranked(String borough, long base, int n) {
+        return IntStream.range(0, n)
+                .mapToObj(i -> link(2, base + i, 19.3, -99.1, borough, (double) i))
+                .toList();
     }
 
     private static Preference interest(String name) {
@@ -138,6 +153,58 @@ class OfferCatalogTest {
         CatalogLoad load = catalog.load();
 
         assertThat(load.offers()).isEmpty();
+        assertThat(load.skipped()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P6.1: should keep the 10 most popular places of a borough")
+    void shouldKeepTheTenMostPopularPlacesOfABorough() {
+        List<OfferPlaceView> kept = OfferCatalog.topPerBorough(ranked("Coyoacán", 100, 12), 10);
+
+        assertThat(kept).extracting(OfferPlaceView::getPlaceId)
+                .containsExactly(111L, 110L, 109L, 108L, 107L, 106L, 105L, 104L, 103L, 102L);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P6.2, P6.3: should break score ties by place id and put places without score last")
+    void shouldBreakTiesByPlaceIdAndPutPlacesWithoutScoreLast() {
+        List<OfferPlaceView> links = List.of(
+                link(2, 30, 19.3, -99.1, "Coyoacán", null),
+                link(2, 21, 19.3, -99.1, "Coyoacán", 5.0),
+                link(2, 20, 19.3, -99.1, "Coyoacán", 5.0),
+                link(2, 10, 19.3, -99.1, "Coyoacán", 1.0));
+
+        List<OfferPlaceView> kept = OfferCatalog.topPerBorough(links, 10);
+
+        assertThat(kept).extracting(OfferPlaceView::getPlaceId).containsExactly(20L, 21L, 10L, 30L);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P6.4, P6.5: should apply the limit per borough and keep everything below it")
+    void shouldApplyTheLimitPerBoroughAndKeepEverythingBelowIt() {
+        List<OfferPlaceView> links = new ArrayList<>(ranked("Coyoacán", 100, 12));
+        links.addAll(ranked("Tlalpan", 200, 12));
+        links.addAll(ranked("Xochimilco", 300, 3));
+
+        List<OfferPlaceView> kept = OfferCatalog.topPerBorough(links, 10);
+
+        assertThat(kept).extracting(OfferPlaceView::getBorough).filteredOn("Coyoacán"::equals).hasSize(10);
+        assertThat(kept).extracting(OfferPlaceView::getBorough).filteredOn("Tlalpan"::equals).hasSize(10);
+        assertThat(kept).extracting(OfferPlaceView::getBorough).filteredOn("Xochimilco"::equals).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("[kb-lugares] P6.6, P6.7: should cap city offers per borough without touching home or skipped")
+    void shouldCapCityOffersPerBoroughWithoutTouchingHomeOrSkipped() {
+        when(activities.findAllWithInterests())
+                .thenReturn(List.of(activity(1, "HOME").build(), activity(2, "CITY").build()));
+        when(places.findAllActivityPlaces()).thenReturn(ranked("Coyoacán", 100, 12));
+
+        CatalogLoad load = catalog.load();
+
+        assertThat(load.offers()).extracting(Offer::key).first().isEqualTo("1");
+        assertThat(load.offers()).hasSize(11);
+        assertThat(load.offers()).extracting(Offer::placeId).doesNotContain(100L, 101L);
         assertThat(load.skipped()).isEmpty();
     }
 

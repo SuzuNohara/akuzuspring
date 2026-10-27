@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,14 +38,22 @@ public class CatalogCandidateSource implements CandidateSource {
     /** Las franjas se interpretan en hora de la CDMX. */
     static final ZoneId CDMX = ZoneId.of("America/Mexico_City");
 
+    /** [kb-lugares] Con "Sin zona", el lugar sale al azar de entre los N mas populares. */
+    static final int NO_ZONE_POOL = 5;
+
     private static final String CITY = "CITY";
     private static final Comparator<Candidate> BEST_FIRST =
             Comparator.comparingDouble(Candidate::score)
                     .reversed()
                     .thenComparing(c -> c.activity().getTitle());
+    /** Mas popular primero; sin {@code score} al final; a igual popularidad, el id menor. */
+    private static final Comparator<ActivityPlaceView> MOST_POPULAR = Comparator
+            .comparing(ActivityPlaceView::getScore, Comparator.nullsLast(Comparator.reverseOrder()))
+            .thenComparing(ActivityPlaceView::getPlaceId);
 
     private final ActivityRepository activities;
     private final PlaceRepository places;
+    private final RandomGenerator random;
 
     /**
      * {@inheritDoc}
@@ -83,7 +92,7 @@ public class CatalogCandidateSource implements CandidateSource {
         return catalog.stream()
                 .filter(a -> !excluded.contains(a.getId()) && !chosen.containsKey(a.getId()))
                 .filter(a -> matches(a, step, daypart))
-                .map(a -> toCandidate(a, step.query().references(), placesByActivity, context))
+                .map(a -> toCandidate(a, step.query().references(), placesByActivity, context, random))
                 .flatMap(Optional::stream)
                 .sorted(BEST_FIRST)
                 .toList();
@@ -112,25 +121,42 @@ public class CatalogCandidateSource implements CandidateSource {
             Activity a,
             List<Coordinates> references,
             Map<Long, List<ActivityPlaceView>> placesByActivity,
-            CoupleContext context) {
+            CoupleContext context,
+            RandomGenerator random) {
         double score = context.weight(IdeaCategory.ofActivityType(a.getActivityType()));
         if (!CITY.equals(a.getLocationScope())) {
             return Optional.of(new Candidate(a, null, score));
         }
         List<ActivityPlaceView> options = placesByActivity.getOrDefault(a.getId(), List.of());
-        return nearestValidPlace(options, references).map(place -> new Candidate(a, place, score));
+        return nearestValidPlace(options, references, random).map(place -> new Candidate(a, place, score));
     }
 
-    /** Lugar mas cercano a 15 km o menos de todas las referencias; sin referencias, el primero. */
-    static Optional<PlaceChoice> nearestValidPlace(List<ActivityPlaceView> options, List<Coordinates> references) {
+    /**
+     * Lugar mas cercano a 15 km o menos de todas las referencias; a igual distancia, el mas popular.
+     * [kb-lugares] Sin referencias ("Sin zona"), uno al azar de los {@value #NO_ZONE_POOL} mas
+     * populares, sin distancia. Lo usa tambien {@link VectorCandidateSource} (U7).
+     *
+     * @implNote O(p log p) con p lugares de la actividad.
+     */
+    static Optional<PlaceChoice> nearestValidPlace(
+            List<ActivityPlaceView> options, List<Coordinates> references, RandomGenerator random) {
         if (references.isEmpty()) {
-            return options.stream().findFirst().map(p -> choice(p, null));
+            List<ActivityPlaceView> popular = options.stream().sorted(MOST_POPULAR).limit(NO_ZONE_POOL).toList();
+            return popular.isEmpty()
+                    ? Optional.empty()
+                    : Optional.of(choice(popular.get(random.nextInt(popular.size())), null));
         }
+        Comparator<PlaceOption> nearest = Comparator.comparingDouble(PlaceOption::distanceKm)
+                .thenComparing(PlaceOption::view, MOST_POPULAR);
         return options.stream()
-                .map(p -> choice(p, farthestKm(p, references)))
+                .map(p -> new PlaceOption(p, farthestKm(p, references)))
                 .filter(p -> p.distanceKm() <= ProximityFilter.DEFAULT_RADIUS_KM)
-                .min(Comparator.comparingDouble(PlaceChoice::distanceKm));
+                .min(nearest)
+                .map(p -> choice(p.view(), p.distanceKm()));
     }
+
+    /** Un lugar con su distancia a la referencia mas lejana. */
+    private record PlaceOption(ActivityPlaceView view, double distanceKm) {}
 
     private static double farthestKm(ActivityPlaceView p, List<Coordinates> references) {
         Coordinates where = new Coordinates(p.getLat(), p.getLon());

@@ -22,4 +22,7 @@ public interface OfferPlaceView {
 
     /** Costo por persona en este lugar; hoy no se usa (R9: la tarjeta y el filtro usan el de la actividad). */
     Integer getCostOverride();
+
+    /** [kb-lugares] Popularidad del lugar ({@code places.score}); {@code null} sin dato. */
+    Double getScore();
 }

@@ -39,6 +39,8 @@ import org.springframework.validation.annotation.Validated;
  * @param softCap tope de cada llamada a Mistral con politica {@code SOFT}; subirlo (p. ej. 10m) deja
  *     ver que elige Mistral en un equipo sin GPU. La app espera por su cuenta
  *     {@code EXPO_PUBLIC_RECOMMEND_TIMEOUT_MS}
+ * @param placesPerBorough [kb-lugares] U6 - lugares mas populares ({@code places.score}) de cada
+ *     actividad y alcaldia que se indexan en Qdrant; el lugar final se elige entre todos en MySQL (U7)
  */
 @Validated
 @ConfigurationProperties(prefix = "nexus.agent")
@@ -61,7 +63,8 @@ public record AgentProperties(
         @DefaultValue("600") @Positive int numPredict,
         @DefaultValue("0.2") double temperature,
         @DefaultValue("2") @Positive int maxAttempts,
-        @DefaultValue("60s") @NotNull Duration softCap) {
+        @DefaultValue("60s") @NotNull Duration softCap,
+        @DefaultValue("10") @Positive int placesPerBorough) {
 
     /** Que pasa cuando Mistral no termina dentro del presupuesto. */
     public enum TimePolicy {

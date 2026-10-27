@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.nexus.entity.Activity;
+import com.nexus.integration.AgentTestProperties;
 import com.nexus.integration.qdrant.QdrantFilter;
 import com.nexus.model.IdeaCategory;
 import com.nexus.model.Scope;
@@ -161,7 +162,7 @@ class HardFilterTest {
                 .filter(a -> "CITY".equals(a.getLocationScope()))
                 .map(a -> OfferCatalogTest.link(a.getId(), 100 + a.getId(), 19.40, -99.15))
                 .toList());
-        return new OfferCatalog(activities, places).load().offers();
+        return new OfferCatalog(activities, places, AgentTestProperties.defaults()).load().offers();
     }
 
     // Evaluador en memoria del subconjunto de filtros de Qdrant que produce QdrantFilter.

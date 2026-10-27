@@ -25,7 +25,8 @@ public final class AgentTestProperties {
         return new AgentProperties(
                 p.ollamaUrl(), p.chatModel(), p.embedModel(), p.qdrantUrl(), p.llmTimeout(), p.indexOnStartup(),
                 p.enabled(), p.alias(), p.textVersion(), p.budget(), p.minLlm(), p.timePolicy(), p.topK(),
-                p.llmPicks(), p.numCtx(), p.numPredict(), p.temperature(), p.maxAttempts(), softCap);
+                p.llmPicks(), p.numCtx(), p.numPredict(), p.temperature(), p.maxAttempts(), softCap,
+                p.placesPerBorough());
     }
 
     /** Los valores de prueba con el tope por llamada y la politica de tiempo dados. */
@@ -49,6 +50,7 @@ public final class AgentTestProperties {
                 600,
                 0.2,
                 2,
-                Duration.ofSeconds(60));
+                Duration.ofSeconds(60),
+                10);
     }
 }

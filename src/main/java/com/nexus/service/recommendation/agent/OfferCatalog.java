@@ -1,5 +1,6 @@
 package com.nexus.service.recommendation.agent;
 
+import com.nexus.config.AgentProperties;
 import com.nexus.entity.Activity;
 import com.nexus.entity.Preference;
 import com.nexus.model.IdeaCategory;
@@ -30,6 +31,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>El costo es el de la actividad aunque el lugar tenga {@code cost_override} (R9: es lo que
  * muestra la tarjeta).
+ *
+ * <p>[kb-lugares] U6 - De cada actividad en la ciudad solo se indexan los
+ * {@code nexus.agent.places-per-borough} lugares mas populares de cada alcaldia; el lugar que ve la
+ * pareja se elige despues entre todos sus enlaces de MySQL (U7).
  */
 @Service
 @RequiredArgsConstructor
@@ -40,8 +45,14 @@ public class OfferCatalog {
     private static final String ANY = "ANY";
     private static final String SEPARATOR = "\\|";
 
+    /** Mas popular primero; sin {@code score} al final; a igual popularidad, el id menor. */
+    private static final Comparator<OfferPlaceView> MOST_POPULAR = Comparator
+            .comparing(OfferPlaceView::getScore, Comparator.nullsLast(Comparator.reverseOrder()))
+            .thenComparing(OfferPlaceView::getPlaceId);
+
     private final ActivityRepository activities;
     private final PlaceRepository places;
+    private final AgentProperties properties;
 
     /** Ofertas validas y descartes, en orden de actividad y lugar. */
     public record CatalogLoad(List<Offer> offers, List<Skipped> skipped) {}
@@ -73,10 +84,24 @@ public class OfferCatalog {
                 collect(a, null, offers, skipped);
                 links.forEach(link -> skipped.add(new Skipped(keyOf(a, link), "link_on_home")));
             } else {
-                links.forEach(link -> collect(a, link, offers, skipped));
+                topPerBorough(links, properties.placesPerBorough()).forEach(link -> collect(a, link, offers, skipped));
             }
         }
         return new CatalogLoad(List.copyOf(offers), List.copyOf(skipped));
+    }
+
+    /**
+     * [kb-lugares] U6 - Los {@code limit} enlaces mas populares de cada alcaldia, en ese orden y con
+     * las alcaldias en el orden en que aparecen.
+     *
+     * @implNote O(l log l) con l enlaces de la actividad.
+     */
+    public static List<OfferPlaceView> topPerBorough(List<OfferPlaceView> links, int limit) {
+        Map<String, List<OfferPlaceView>> byBorough = links.stream()
+                .collect(Collectors.groupingBy(OfferPlaceView::getBorough, LinkedHashMap::new, Collectors.toList()));
+        return byBorough.values().stream()
+                .flatMap(group -> group.stream().sorted(MOST_POPULAR).limit(limit))
+                .toList();
     }
 
     private static void collect(Activity a, OfferPlaceView link, List<Offer> offers, List<Skipped> skipped) {

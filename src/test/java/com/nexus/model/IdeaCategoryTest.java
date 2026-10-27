@@ -70,6 +70,19 @@ class IdeaCategoryTest {
     }
 
     @Test
+    @DisplayName("[kb-lugares] should place the types of the new city activities in their dimension")
+    void shouldPlaceTheTypesOfTheNewCityActivitiesInTheirDimension() {
+        // Centro comercial, partido y lucha libre, helado, boliche y bailar
+        assertThat(IdeaCategory.ofActivityType("SHOPPING")).isEqualTo(IdeaCategory.SOCIAL);
+        assertThat(IdeaCategory.ofActivityType("SHOW")).isEqualTo(IdeaCategory.SOCIAL);
+        assertThat(IdeaCategory.ofActivityType("COFFEE")).isEqualTo(IdeaCategory.SOCIAL);
+        assertThat(IdeaCategory.ofActivityType("OTHER")).isEqualTo(IdeaCategory.SOCIAL);
+        // Zoologico; patinaje y karts
+        assertThat(IdeaCategory.ofActivityType("WALK")).isEqualTo(IdeaCategory.AMBIENTAL);
+        assertThat(IdeaCategory.ofActivityType("SPORT_SESSION")).isEqualTo(IdeaCategory.FISICO);
+    }
+
+    @Test
     @DisplayName("should fall back to SOCIAL for OTHER, unknown or missing types")
     void shouldFallBackToSocialForOtherUnknownOrMissingTypes() {
         assertThat(IdeaCategory.ofActivityType("OTHER")).isEqualTo(IdeaCategory.SOCIAL);

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 /** B9 - Avisos dentro de la app de la planeacion en pareja. */
 @ExtendWith(MockitoExtension.class)
@@ -29,11 +30,12 @@ class AppNotificationServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-17T18:00:00Z");
 
     @Mock private AppNotificationRepository repository;
+    @Mock private ApplicationEventPublisher events;
     private AppNotificationService service;
 
     @BeforeEach
     void setUp() {
-        service = new AppNotificationService(repository, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new AppNotificationService(repository, Clock.fixed(NOW, ZoneOffset.UTC), events);
     }
 
     @Test

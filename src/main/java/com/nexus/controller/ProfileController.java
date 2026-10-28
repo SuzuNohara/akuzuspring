@@ -144,7 +144,22 @@ public class ProfileController {
         }
         
         userService.updateFCMToken(userId, fcmToken);
-        
+
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Quitar el token FCM al cerrar sesion ([push-avisos] U9)
+     * DELETE /api/profile/{userId}/fcm-token
+     */
+    @DeleteMapping("/{userId}/fcm-token")
+    public ResponseEntity<Void> clearFCMToken(
+            @PathVariable Long userId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+
+        userService.clearFCMToken(userId);
+
+        return ResponseEntity.noContent().build();
     }
 }

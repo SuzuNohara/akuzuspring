@@ -809,11 +809,24 @@ public class UserService {
         // Buscar usuario
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new BadRequestException("Usuario no encontrado"));
-        
+
+        // [push-avisos] R7: si otra cuenta entro antes en este telefono, deja de recibir sus avisos
+        userRepository.clearTokenFromOthers(fcmToken, userId);
+
         // Actualizar token
         user.setFcmToken(fcmToken);
         userRepository.save(user);
-        
+
         log.info("Token FCM actualizado exitosamente para usuario ID: {}", userId);
+    }
+
+    /**
+     * [push-avisos] U9: al cerrar sesion el telefono deja de recibir los avisos de esta cuenta.
+     * @param userId ID del usuario
+     */
+    @Transactional
+    public void clearFCMToken(Long userId) {
+        userRepository.clearToken(userId);
+        log.info("Token FCM quitado para usuario ID: {}", userId);
     }
 }

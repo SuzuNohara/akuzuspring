@@ -250,4 +250,26 @@ class ProfileControllerTest {
 
         verifyNoInteractions(userService);
     }
+
+    @Test
+    @DisplayName("should return 204 and clear the token when deleting your own fcm token")
+    void shouldReturn204AndClearTheTokenWhenDeletingYourOwnFcmToken() throws Exception {
+        authenticateAs(USER_ID);
+
+        mockMvc.perform(delete("/profile/" + USER_ID + "/fcm-token").header("Authorization", BEARER))
+                .andExpect(status().isNoContent());
+
+        org.mockito.Mockito.verify(userService).clearFCMToken(USER_ID);
+    }
+
+    @Test
+    @DisplayName("should return 403 and not touch the service when deleting another user's fcm token")
+    void shouldReturn403AndNotTouchTheServiceWhenDeletingAnotherUsersFcmToken() throws Exception {
+        authenticateAs(OTHER_USER_ID);
+
+        mockMvc.perform(delete("/profile/" + USER_ID + "/fcm-token").header("Authorization", BEARER))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(userService);
+    }
 }

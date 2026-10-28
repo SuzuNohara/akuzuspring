@@ -1,5 +1,6 @@
 package com.nexus.service;
 
+import com.nexus.service.push.NoticeTypes;
 import com.nexus.controller.LinkController;
 import com.nexus.dto.LinkCodeResponse;
 import com.nexus.dto.LinkStatusResponse;
@@ -19,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
@@ -32,7 +32,7 @@ public class LinkService {
     private final LinkRepository linkRepository;
     private final LinkCodeRepository linkCodeRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
+    private final AppNotificationService appNotifications;
     private final EventRepository eventRepository;
     
     private static final int CODE_LENGTH = 6;
@@ -152,19 +152,11 @@ public class LinkService {
         linkCode.setUsedAt(Instant.now());
         linkCodeRepository.save(linkCode);
         
-        // Enviar notificación push al generador del código
+        // [push-avisos] U5: avisar al generador del código (campanita y push)
         User codeGenerator = linkCode.getGeneratedByUser();
-        log.info("💌 Intentando enviar notificación a usuario ID: {}", codeGenerator.getId());
-        log.info("💌 FCM Token del generador: {}", codeGenerator.getFcmToken() != null ? 
-            codeGenerator.getFcmToken().substring(0, Math.min(20, codeGenerator.getFcmToken().length())) + "..." : "NULL");
-        
-        if (codeGenerator.getFcmToken() != null && !codeGenerator.getFcmToken().isEmpty()) {
-            String partnerName = user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
-            log.info("💌 Enviando notificación con nombre de pareja: {}", partnerName);
-            notificationService.sendLinkEstablishedNotification(codeGenerator.getFcmToken(), partnerName);
-        } else {
-            log.warn("⚠️ Usuario ID: {} no tiene token FCM registrado. No se puede enviar notificación.", codeGenerator.getId());
-        }
+        String partnerName = user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
+        appNotifications.notify(codeGenerator.getId(), null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están vinculados!",
+                partnerName + " se vinculó contigo.", Map.of("partnerName", partnerName));
         
         // Retornar información del vínculo establecido
         User partner = linkCode.getGeneratedByUser();
@@ -287,7 +279,6 @@ public class LinkService {
                 : link.getInitiatorUser();
         
         String partnerName = partner.getDisplayName();
-        String partnerPushToken = partner.getFcmToken();
         
         log.info("🔗 Vínculo encontrado. Partner: {} (ID: {})", partnerName, partner.getId());
         
@@ -305,27 +296,11 @@ public class LinkService {
                 log.info("✅ Eventos eliminados");
             }
             
-            // RN-12: Enviar notificación al partner ANTES de eliminar el vínculo
-            if (partnerPushToken != null && !partnerPushToken.isEmpty()) {
-                log.info("🔔 Enviando notificación de eliminación de vínculo a {}", partnerName);
-                log.info("🔔 Token FCM: {}...", partnerPushToken.substring(0, Math.min(30, partnerPushToken.length())));
-                
-                Map<String, String> notificationData = new HashMap<>();
-                notificationData.put("type", "LINK_DELETED");
-                notificationData.put("partnerName", user.getDisplayName());
-                
-                notificationService.sendNotification(
-                        partnerPushToken,
-                        "Vínculo eliminado",
-                        user.getDisplayName() + " ha terminado la conexión contigo",
-                        notificationData
-                );
-                notificationSent = true;
-            } else {
-                log.warn("⚠️ No se pudo enviar notificación: Partner no tiene Push Token");
-                log.warn("⚠️ Partner ID: {}, Token: {}", partner.getId(), partnerPushToken == null ? "null" : "empty");
-                log.info("ℹ️ El partner debe abrir la app en un dispositivo físico para recibir notificaciones");
-            }
+            // RN-12: avisar al partner ANTES de eliminar el vínculo ([push-avisos] U5: campanita y push)
+            String myName = user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
+            appNotifications.notify(partner.getId(), null, NoticeTypes.LINK_DELETED, "Vínculo eliminado",
+                    myName + " terminó la conexión contigo.", Map.of("partnerName", myName));
+            notificationSent = true;
             
             // Eliminar físicamente el vínculo (evita problemas con el constraint uk_couple_active)
             linkRepository.delete(link);

@@ -1,5 +1,6 @@
 package com.nexus.service;
 
+import com.nexus.service.push.NoticeTypes;
 import com.nexus.dto.CreateEventRequest;
 import com.nexus.dto.CreateEventResponse;
 import com.nexus.dto.EventResponse;
@@ -44,7 +45,7 @@ public class EventService {
     private final EventRepository eventRepository;
     private final LinkRepository linkRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
+    private final AppNotificationService appNotifications;
     private final EventExceptionRepository eventExceptionRepository;
     
     @PersistenceContext
@@ -118,14 +119,11 @@ public class EventService {
         String notificationStatus = "Notificación pendiente";
         try {
             if (partner != null) {
-                notificationService.sendEventApprovalNotification(
-                    partner.getEmail(),
-                    partner.getDisplayName() != null ? partner.getDisplayName() : partner.getNickname(),
-                    creator.getDisplayName() != null ? creator.getDisplayName() : creator.getNickname(),
-                    savedEvent.getTitle()
-                );
+                // [push-avisos] U4: a la campanita y como push
+                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
+                    nameOf(creator) + " quiere agregar \"" + savedEvent.getTitle() + "\" al calendario.");
                 notificationStatus = "Notificación enviada exitosamente";
-                log.info("Notificación de aprobación enviada a {}", partner.getEmail());
+                log.info("Aviso de aprobación para usuario ID {}", partner.getId());
             }
         } catch (Exception e) {
             log.warn("Error enviando notificación de evento a la pareja: {}", e.getMessage());
@@ -177,6 +175,11 @@ public class EventService {
         }
     }
     
+    /** Nombre que ve la pareja en los avisos: el nombre, o el apodo si no hay nombre. */
+    private static String nameOf(User user) {
+        return user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
+    }
+
     private User getPartnerUser(Link link, Long userId) {
         if (link.getInitiatorUser().getId().equals(userId)) {
             return link.getPartnerUser();
@@ -247,11 +250,8 @@ public class EventService {
         // Enviar notificación al creador
         try {
             User creator = savedEvent.getCreator();
-            notificationService.sendEventConfirmedNotification(
-                creator.getEmail(),
-                creator.getDisplayName() != null ? creator.getDisplayName() : creator.getNickname(),
-                savedEvent.getTitle()
-            );
+            appNotifications.notify(creator.getId(), null, NoticeTypes.EVENT_CONFIRMED, "Evento confirmado",
+                "Tu pareja aceptó \"" + savedEvent.getTitle() + "\".");
         } catch (Exception e) {
             log.warn("Error enviando notificación de confirmación: {}", e.getMessage());
         }
@@ -412,13 +412,9 @@ public class EventService {
             
             try {
                 if (otherUser != null) {
-                    notificationService.sendEventApprovalNotification(
-                        otherUser.getEmail(),
-                        otherUser.getDisplayName() != null ? otherUser.getDisplayName() : otherUser.getNickname(),
-                        user.getDisplayName() != null ? user.getDisplayName() : user.getNickname(),
-                        updatedEvent.getTitle()
-                    );
-                    log.info("Notificación de edición enviada a {}", otherUser.getEmail());
+                    appNotifications.notify(otherUser.getId(), null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
+                        nameOf(user) + " cambió \"" + updatedEvent.getTitle() + "\" y necesita tu visto bueno.");
+                    log.info("Aviso de edición para usuario ID {}", otherUser.getId());
                 }
             } catch (Exception e) {
                 log.warn("Error enviando notificación de edición: {}", e.getMessage());
@@ -456,8 +452,7 @@ public class EventService {
         // 4. Guardar información del creador para notificación (antes de limpiar caché)
         User creator = event.getCreator();
         String eventTitle = event.getTitle();
-        String creatorEmail = creator.getEmail();
-        String creatorDisplayName = creator.getDisplayName() != null ? creator.getDisplayName() : creator.getNickname();
+        Long creatorId = creator.getId();
         
         // 5. Ejecutar UPDATE nativo SQL (bypass completo de JPA/Hibernate)
         log.info("Ejecutando UPDATE nativo para cambiar status a REJECTED");
@@ -485,12 +480,9 @@ public class EventService {
         
         // 8. Enviar notificación al creador
         try {
-            notificationService.sendEventRejectedNotification(
-                creatorEmail,
-                creatorDisplayName,
-                eventTitle
-            );
-            log.info("Notificación de rechazo enviada a {}", creatorEmail);
+            appNotifications.notify(creatorId, null, NoticeTypes.EVENT_REJECTED, "Evento rechazado",
+                "Tu pareja no aceptó \"" + eventTitle + "\".");
+            log.info("Aviso de rechazo para usuario ID {}", creatorId);
         } catch (Exception e) {
             log.warn("Error enviando notificación de rechazo: {}", e.getMessage());
         }
@@ -526,7 +518,7 @@ public class EventService {
         
         // 5. Eliminar el evento (cascada eliminará recordatorios)
         User partner = getPartnerUser(activeLink, userId);
-        String deletedBy = user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
+        String deletedBy = nameOf(user);
         
         eventRepository.delete(event);
         log.info("Evento {} eliminado exitosamente por usuario {}", eventId, userId);
@@ -534,13 +526,9 @@ public class EventService {
         // 6. Notificar a la pareja
         try {
             if (partner != null) {
-                notificationService.sendEventDeletedNotification(
-                    partner.getEmail(),
-                    partner.getDisplayName() != null ? partner.getDisplayName() : partner.getNickname(),
-                    deletedBy,
-                    event.getTitle()
-                );
-                log.info("Notificación de eliminación enviada a {}", partner.getEmail());
+                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_DELETED, "Evento eliminado",
+                    deletedBy + " quitó \"" + event.getTitle() + "\" del calendario.");
+                log.info("Aviso de eliminación para usuario ID {}", partner.getId());
             }
         } catch (Exception e) {
             log.warn("Error enviando notificación de eliminación: {}", e.getMessage());

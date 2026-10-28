@@ -21,6 +21,8 @@ import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.LinkRepository;
 import com.nexus.repository.UserRepository;
+import com.nexus.service.push.NoticeTypes;
+import jakarta.persistence.EntityManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -28,8 +30,12 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
-/** Reglas de la agenda compartida: RN-15 (vinculo activo), RN-16 y RN-17 (aprobacion mutua). */
+/**
+ * Reglas de la agenda compartida: RN-15 (vinculo activo), RN-16 y RN-17 (aprobacion mutua), y los
+ * avisos de la campanita de cada paso ([push-avisos] U4).
+ */
 class EventServiceTest {
 
     private static final long CREATOR_ID = 4L;
@@ -39,13 +45,14 @@ class EventServiceTest {
     private final EventRepository eventRepository = mock(EventRepository.class);
     private final LinkRepository linkRepository = mock(LinkRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final AppNotificationService appNotifications = mock(AppNotificationService.class);
 
     private final EventService service =
             new EventService(
                     eventRepository,
                     linkRepository,
                     userRepository,
-                    mock(NotificationService.class),
+                    appNotifications,
                     mock(EventExceptionRepository.class));
 
     private final User creator = User.builder().id(CREATOR_ID).displayName("Ana").build();
@@ -101,6 +108,8 @@ class EventServiceTest {
         assertThat(saved.getValue().getStatus()).isEqualTo(EventStatus.PENDING);
         assertThat(saved.getValue().getCreatorApproved()).isTrue();
         assertThat(saved.getValue().getPartnerApproved()).isFalse();
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
+                "Ana quiere agregar \"Cena\" al calendario.");
     }
 
     @Test
@@ -162,6 +171,8 @@ class EventServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(EventStatus.CONFIRMED);
         assertThat(pending.getPartnerApproved()).isTrue();
+        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_CONFIRMED, "Evento confirmado",
+                "Tu pareja aceptó \"Cena\".");
     }
 
     @Test
@@ -180,6 +191,8 @@ class EventServiceTest {
         assertThat(confirmed.getStatus()).isEqualTo(EventStatus.PENDING);
         assertThat(confirmed.getCreatorApproved()).isTrue();
         assertThat(confirmed.getPartnerApproved()).isFalse();
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
+                "Ana cambió \"Cena\" y necesita tu visto bueno.");
     }
 
     @Test
@@ -215,5 +228,52 @@ class EventServiceTest {
 
         assertThat(confirmed.getStatus()).isEqualTo(EventStatus.CONFIRMED);
         assertThat(confirmed.getPartnerApproved()).isTrue();
+    }
+
+    @Test
+    @DisplayName("should not notify anyone when only the description changes (RN-17)")
+    void shouldNotNotifyAnyoneWhenOnlyTheDescriptionChanges() {
+        Event confirmed =
+                event().status(EventStatus.CONFIRMED).creatorApproved(true).partnerApproved(true).build();
+        given(eventRepository.findById(EVENT_ID)).willReturn(Optional.of(confirmed));
+        given(userRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+        givenSaveReturnsTheSameEvent();
+        UpdateEventRequest request = new UpdateEventRequest();
+        request.setDescription("Llevar vino");
+
+        service.updateEvent(EVENT_ID, CREATOR_ID, request);
+
+        org.mockito.Mockito.verifyNoInteractions(appNotifications);
+    }
+
+    @Test
+    @DisplayName("should tell the creator when the partner rejects the event")
+    void shouldTellTheCreatorWhenThePartnerRejectsTheEvent() {
+        Event pending =
+                event().status(EventStatus.PENDING).creatorApproved(true).partnerApproved(false).build();
+        given(eventRepository.findByIdAndUserId(EVENT_ID, PARTNER_ID)).willReturn(Optional.of(pending));
+        given(eventRepository.updateEventStatus(EVENT_ID)).willReturn(1);
+        EntityManager entityManager = mock(EntityManager.class);
+        given(entityManager.find(Event.class, EVENT_ID))
+                .willReturn(event().status(EventStatus.REJECTED).build());
+        ReflectionTestUtils.setField(service, "entityManager", entityManager);
+
+        service.rejectEvent(PARTNER_ID, EVENT_ID);
+
+        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_REJECTED, "Evento rechazado",
+                "Tu pareja no aceptó \"Cena\".");
+    }
+
+    @Test
+    @DisplayName("should tell the partner who removed the event from the calendar")
+    void shouldTellThePartnerWhoRemovedTheEventFromTheCalendar() {
+        given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));
+        given(eventRepository.findById(EVENT_ID)).willReturn(Optional.of(event().build()));
+        given(linkRepository.findActiveLinkByUserId(CREATOR_ID)).willReturn(Optional.of(link));
+
+        service.deleteEvent(EVENT_ID, CREATOR_ID);
+
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_DELETED, "Evento eliminado",
+                "Ana quitó \"Cena\" del calendario.");
     }
 }

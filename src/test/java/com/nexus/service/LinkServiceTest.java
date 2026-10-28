@@ -18,8 +18,10 @@ import com.nexus.repository.EventRepository;
 import com.nexus.repository.LinkCodeRepository;
 import com.nexus.repository.LinkRepository;
 import com.nexus.repository.UserRepository;
+import com.nexus.service.push.NoticeTypes;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,13 +37,14 @@ class LinkServiceTest {
     private final LinkRepository linkRepository = mock(LinkRepository.class);
     private final LinkCodeRepository linkCodeRepository = mock(LinkCodeRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
+    private final AppNotificationService appNotifications = mock(AppNotificationService.class);
 
     private final LinkService service =
             new LinkService(
                     linkRepository,
                     linkCodeRepository,
                     userRepository,
-                    mock(NotificationService.class),
+                    appNotifications,
                     mock(EventRepository.class));
 
     private final User generator = User.builder().id(GENERATOR_ID).displayName("Ana").build();
@@ -165,5 +168,23 @@ class LinkServiceTest {
         assertThat(saved.getValue().getPartnerUser()).isSameAs(partner);
         assertThat(code.getIsUsed()).isTrue();
         assertThat(response.isHasActiveLink()).isTrue();
+        verify(appNotifications).notify(GENERATOR_ID, null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están vinculados!",
+                "Luis se vinculó contigo.", Map.of("partnerName", "Luis"));
+    }
+
+    @Test
+    @DisplayName("should tell the partner before deleting the link and report it as sent (RN-12)")
+    void shouldTellThePartnerBeforeDeletingTheLinkAndReportItAsSent() {
+        Link link = Link.builder().id(1L).initiatorUser(generator).partnerUser(partner).isActive(true).build();
+        given(userRepository.findById(PARTNER_ID)).willReturn(Optional.of(partner));
+        given(linkRepository.findActiveLinkByUserId(PARTNER_ID)).willReturn(Optional.of(link));
+
+        var response = service.deleteLink(PARTNER_ID);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(appNotifications, linkRepository);
+        order.verify(appNotifications).notify(GENERATOR_ID, null, NoticeTypes.LINK_DELETED, "Vínculo eliminado",
+                "Luis terminó la conexión contigo.", Map.of("partnerName", "Luis"));
+        order.verify(linkRepository).delete(link);
+        assertThat(response.isNotificationSent()).isTrue();
     }
 }

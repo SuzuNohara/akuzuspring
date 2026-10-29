@@ -36,6 +36,7 @@ class ExternalCalendarServiceTest {
     @Mock private ExternalCalendarRepository calendars;
     @Mock private ExternalEventRepository externalEvents;
     @Mock private EventRepository events;
+    @Mock private AppNotificationService appNotifications;
     @InjectMocks private ExternalCalendarService service;
 
     private void busyOnlyCalendar(long calendarId, long owner, String title) {

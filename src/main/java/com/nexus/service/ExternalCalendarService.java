@@ -7,6 +7,7 @@ import com.nexus.entity.ExternalEvent;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
+import com.nexus.service.push.NoticeTypes;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,9 @@ import org.springframework.stereotype.Service;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -27,6 +31,12 @@ public class ExternalCalendarService {
     private final ExternalCalendarRepository externalCalendarRepository;
     private final ExternalEventRepository externalEventRepository;
     private final EventRepository eventRepository;
+    private final AppNotificationService appNotifications;
+
+    /** [avisos-calendario] Las horas de los avisos se dicen en hora de la CDMX. */
+    private static final ZoneId CDMX = ZoneId.of("America/Mexico_City");
+    private static final String[] WEEKDAYS = {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
+    private static final DateTimeFormatter HOUR = DateTimeFormatter.ofPattern("HH:mm");
 
     /**
      * RF-19: Vincular un calendario externo
@@ -154,18 +164,18 @@ public class ExternalCalendarService {
                     );
 
                 if (existing.isPresent()) {
-                    // RF-24: Detectar conflictos
+                    // RF-24: solo una copia de un evento creado en Nexus puede estar en conflicto
                     ExternalEvent event = existing.get();
-                    boolean hasConflict = detectConflict(event, request);
-                    
-                    if (hasConflict) {
-                        conflicts.add(String.format(
-                            "Evento '%s' fue modificado externamente",
-                            event.getTitle()
-                        ));
-                    }
-
                     updateExistingEvent(event, request);
+                    Optional<Conflict> conflict = conflictOf(event, request);
+                    if (conflict.isEmpty()) {
+                        event.setConflictHash(null);
+                    } else if (!conflict.get().hash().equals(event.getConflictHash())) {
+                        // Se avisa una sola vez por cambio; la siguiente sincronizacion trae lo mismo.
+                        event.setConflictHash(conflict.get().hash());
+                        notifyConflict(userId, conflict.get().nexusEvent());
+                        conflicts.add(conflict.get().nexusEvent().getTitle());
+                    }
                     // Guardar y vaciar el contexto de persistencia para evitar assertions
                     externalEventRepository.saveAndFlush(event);
                     updated++;
@@ -200,30 +210,67 @@ public class ExternalCalendarService {
         return result;
     }
 
-    /**
-     * RF-24: Detectar si un evento fue modificado externamente
-     * NOTA: Por ahora desactivado. Solo se debe activar para eventos que se crearon en la app
-     * y se enviaron al calendario externo (funcionalidad aún no implementada).
-     */
-    private boolean detectConflict(ExternalEvent existing, SyncEventRequest incoming) {
-        // TODO: Implementar detección de conflictos solo para eventos originados en la app
-        // Por ahora, todos los eventos externos no generan conflictos
-        return false;
-        
-        /* Lógica futura:
-        // Verificar si el evento tiene un eventId de la app (fue creado aquí)
-        if (existing.getAppEventId() == null) {
-            return false; // Evento puramente externo, no hay conflicto
-        }
-        
-        // Si no tenemos lastDeviceUpdate, asumir que no hay conflicto
-        if (incoming.getLastDeviceUpdate() == null || existing.getLastDeviceUpdate() == null) {
-            return false;
-        }
+    /** [avisos-calendario] Copia del telefono que ya no coincide con su evento de Nexus. */
+    record Conflict(Event nexusEvent, String hash) {}
 
-        // Si el evento fue modificado en el dispositivo después de nuestra última actualización
-        return incoming.getLastDeviceUpdate().isAfter(existing.getLastDeviceUpdate());
-        */
+    /**
+     * RF-24 - La copia esta en conflicto si salio de un evento de Nexus que sigue existiendo y su
+     * titulo, inicio o fin ya no coinciden con los de Nexus. Un evento personal (sin {@code
+     * appEventId}) nunca esta en conflicto, aunque cambie. Las horas se comparan al minuto y el
+     * titulo sin espacios sobrantes.
+     *
+     * @return la huella de lo que trae el telefono, para avisar una sola vez por cambio
+     */
+    Optional<Conflict> conflictOf(ExternalEvent copy, SyncEventRequest incoming) {
+        if (copy.getAppEventId() == null) {
+            return Optional.empty();
+        }
+        Optional<Event> nexus = eventRepository.findById(copy.getAppEventId()).filter(e -> e.getDeletedAt() == null);
+        if (nexus.isEmpty()) {
+            return Optional.empty();
+        }
+        Event e = nexus.get();
+        boolean same = normalized(e.getTitle()).equals(normalized(incoming.getTitle()))
+                && sameMinute(e.getStartDateTime(), incoming.getStartDatetime())
+                && sameMinute(e.getEndDateTime(), incoming.getEndDatetime());
+        if (same) {
+            return Optional.empty();
+        }
+        String hash = sha256(normalized(incoming.getTitle()) + "|" + minute(incoming.getStartDatetime())
+                + "|" + minute(incoming.getEndDatetime()));
+        return Optional.of(new Conflict(e, hash));
+    }
+
+    /** Aviso en la campanita (y push): que cambio y como sigue en Nexus. */
+    private void notifyConflict(Long userId, Event nexus) {
+        ZonedDateTime start = nexus.getStartDateTime().atZone(CDMX);
+        ZonedDateTime end = nexus.getEndDateTime().atZone(CDMX);
+        String when = WEEKDAYS[start.getDayOfWeek().getValue() - 1] + " " + start.getDayOfMonth()
+                + " de " + start.format(HOUR) + " a " + end.format(HOUR);
+        appNotifications.notify(userId, null, NoticeTypes.SYNC_CONFLICT, "Cambió un evento en tu calendario",
+                "\"" + nexus.getTitle() + "\" cambió en tu calendario del teléfono. En Nexus sigue el " + when + ".",
+                Map.of("eventId", String.valueOf(nexus.getId())));
+    }
+
+    private static String normalized(String title) {
+        return title == null ? "" : title.trim().replaceAll("\\s+", " ");
+    }
+
+    private static boolean sameMinute(Instant a, Instant b) {
+        return Objects.equals(minute(a), minute(b));
+    }
+
+    private static Instant minute(Instant instant) {
+        return instant == null ? null : instant.truncatedTo(ChronoUnit.MINUTES);
+    }
+
+    private static String sha256(String text) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private void updateExistingEvent(ExternalEvent event, SyncEventRequest request) {

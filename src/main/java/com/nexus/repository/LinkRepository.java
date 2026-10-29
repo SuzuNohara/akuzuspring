@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -25,6 +26,13 @@ public interface LinkRepository extends JpaRepository<Link, Long> {
            "WHERE ((l.initiatorUser.id = :user1Id AND l.partnerUser.id = :user2Id) OR (l.initiatorUser.id = :user2Id AND l.partnerUser.id = :user1Id)) AND l.isActive = true AND l.deletedAt IS NULL")
     Optional<Link> findActiveLinkBetweenUsers(@Param("user1Id") Long user1Id, @Param("user2Id") Long user2Id);
     
+    // [avisos-calendario] RF-29: todas las parejas vinculadas, para el aviso semanal de libres juntos
+    @Query("SELECT l FROM Link l " +
+           "JOIN FETCH l.initiatorUser " +
+           "JOIN FETCH l.partnerUser " +
+           "WHERE l.isActive = true AND l.deletedAt IS NULL")
+    List<Link> findAllActive();
+
     // Verificar si existe vínculo activo
     @Query("SELECT CASE WHEN COUNT(l) > 0 THEN true ELSE false END FROM Link l WHERE (l.initiatorUser.id = :userId OR l.partnerUser.id = :userId) AND l.isActive = true AND l.deletedAt IS NULL")
     boolean existsActiveLinkByUserId(@Param("userId") Long userId);

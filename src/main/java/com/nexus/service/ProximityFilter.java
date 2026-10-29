@@ -1,5 +1,6 @@
 package com.nexus.service;
 
+import com.nexus.exception.BadRequestException;
 import com.nexus.util.GeoDistance;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,9 @@ public class ProximityFilter {
     /** RN-31. */
     public static final double DEFAULT_RADIUS_KM = 15.0;
 
+    /** [rango-distancia] Distancias que puede elegir la pareja (valores cerrados, RN-32). */
+    public static final List<Integer> RADIUS_OPTIONS_KM = List.of(1, 3, 5, 10, 15);
+
     private final double radiusKm;
 
     public ProximityFilter(double radiusKm) {
@@ -41,6 +45,20 @@ public class ProximityFilter {
                 throw new IllegalArgumentException("Coordenadas fuera de rango: " + lat + ", " + lon);
             }
         }
+    }
+
+    /**
+     * [rango-distancia] Distancia pedida: sin valor, {@value #DEFAULT_RADIUS_KM} km (la app vieja no
+     * la manda); un valor fuera de {@link #RADIUS_OPTIONS_KM} se rechaza.
+     */
+    public static int radiusOrDefault(Integer km) {
+        if (km == null) {
+            return (int) DEFAULT_RADIUS_KM;
+        }
+        if (!RADIUS_OPTIONS_KM.contains(km)) {
+            throw new BadRequestException("Distancia no válida");
+        }
+        return km;
     }
 
     public static double distanceKm(Coordinates a, Coordinates b) {

@@ -110,4 +110,19 @@ class ProximityFilterTest {
         assertThatThrownBy(() -> new Coordinates(91, 0)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new Coordinates(0, 181)).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("[rango-distancia] should use 15 km when no distance is sent and accept only the listed ones")
+    void shouldUse15KmWhenNoDistanceIsSentAndAcceptOnlyTheListedOnes() {
+        assertThat(ProximityFilter.radiusOrDefault(null)).isEqualTo(15);
+        assertThat(ProximityFilter.RADIUS_OPTIONS_KM).containsExactly(1, 3, 5, 10, 15);
+        for (int km : ProximityFilter.RADIUS_OPTIONS_KM) {
+            assertThat(ProximityFilter.radiusOrDefault(km)).isEqualTo(km);
+        }
+        for (int km : new int[] {0, 7, -1, 20}) {
+            assertThatThrownBy(() -> ProximityFilter.radiusOrDefault(km))
+                    .isInstanceOf(com.nexus.exception.BadRequestException.class)
+                    .hasMessage("Distancia no válida");
+        }
+    }
 }

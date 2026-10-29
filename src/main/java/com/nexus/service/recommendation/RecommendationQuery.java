@@ -3,6 +3,7 @@ package com.nexus.service.recommendation;
 import com.nexus.model.IdeaCategory;
 import com.nexus.model.Scope;
 import com.nexus.model.WeatherCondition;
+import com.nexus.service.ProximityFilter;
 import com.nexus.service.ProximityFilter.Coordinates;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,6 +17,8 @@ import java.util.Set;
  *
  * @param categories dimensiones del bienestar aceptadas; vacio = cualquiera (en pareja se pueden
  *     elegir varias)
+ * @param radiusKm distancia maxima a cada referencia ([rango-distancia]; una de {@link
+ *     ProximityFilter#RADIUS_OPTIONS_KM}). Como la franja, nunca se relaja
  * @param weather clima previsto en la franja (CU40); {@link WeatherCondition#UNKNOWN} = sin
  *     pronostico, no descarta nada. Como la franja, nunca se relaja
  */
@@ -26,6 +29,7 @@ public record RecommendationQuery(
         Instant slotStart,
         Instant slotEnd,
         List<Coordinates> references,
+        int radiusKm,
         WeatherCondition weather) {
 
     /** Tope del deslizador de presupuesto por persona. */
@@ -35,12 +39,16 @@ public record RecommendationQuery(
         references = List.copyOf(references);
         categories = categories == null ? Set.of() : Set.copyOf(categories);
         weather = weather == null ? WeatherCondition.UNKNOWN : weather;
+        if (radiusKm <= 0) {
+            throw new IllegalArgumentException("El radio debe ser positivo: " + radiusKm);
+        }
     }
 
     /** Sin pronostico todavia; {@link #withWeather} lo agrega. */
     public RecommendationQuery(Scope scope, int maxCostMxn, Set<IdeaCategory> categories, Instant slotStart,
                                Instant slotEnd, List<Coordinates> references) {
-        this(scope, maxCostMxn, categories, slotStart, slotEnd, references, WeatherCondition.UNKNOWN);
+        this(scope, maxCostMxn, categories, slotStart, slotEnd, references,
+                (int) ProximityFilter.DEFAULT_RADIUS_KM, WeatherCondition.UNKNOWN);
     }
 
     /** Modalidad individual: una sola dimensión o {@code null} = cualquiera. */
@@ -61,18 +69,23 @@ public record RecommendationQuery(
 
     /** La misma consulta con el clima previsto en la franja. */
     public RecommendationQuery withWeather(WeatherCondition newWeather) {
-        return new RecommendationQuery(scope, maxCostMxn, categories, slotStart, slotEnd, references, newWeather);
+        return new RecommendationQuery(scope, maxCostMxn, categories, slotStart, slotEnd, references, radiusKm, newWeather);
+    }
+
+    /** La misma consulta con la distancia maxima que eligio la pareja ([rango-distancia]). */
+    public RecommendationQuery withRadiusKm(int newRadiusKm) {
+        return new RecommendationQuery(scope, maxCostMxn, categories, slotStart, slotEnd, references, newRadiusKm, weather);
     }
 
     RecommendationQuery withAnyCategory() {
-        return new RecommendationQuery(scope, maxCostMxn, Set.<IdeaCategory>of(), slotStart, slotEnd, references, weather);
+        return new RecommendationQuery(scope, maxCostMxn, Set.<IdeaCategory>of(), slotStart, slotEnd, references, radiusKm, weather);
     }
 
     RecommendationQuery withMaxCost(int newMaxCost) {
-        return new RecommendationQuery(scope, newMaxCost, categories, slotStart, slotEnd, references, weather);
+        return new RecommendationQuery(scope, newMaxCost, categories, slotStart, slotEnd, references, radiusKm, weather);
     }
 
     RecommendationQuery withScope(Scope newScope) {
-        return new RecommendationQuery(newScope, maxCostMxn, categories, slotStart, slotEnd, references, weather);
+        return new RecommendationQuery(newScope, maxCostMxn, categories, slotStart, slotEnd, references, radiusKm, weather);
     }
 }

@@ -66,6 +66,10 @@ public class PlanningSession {
     @Column(name = "max_cost_mxn")
     private Integer maxCostMxn;
 
+    /** [rango-distancia] Distancia maxima elegida (1, 3, 5, 10 o 15 km); {@code null} = 15 km. */
+    @Column(name = "radius_km")
+    private Integer radiusKm;
+
     /** Nombres de {@link com.nexus.model.IdeaCategory} separados por coma; vacio = cualquiera. */
     private String categories;
 

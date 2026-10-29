@@ -39,7 +39,7 @@ class HardFilterTest {
 
     private static RecommendationQuery query(Scope scope, int maxCost, Set<IdeaCategory> categories, long minutes) {
         return new RecommendationQuery(
-                scope, maxCost, categories, NIGHT_START, NIGHT_START.plusSeconds(minutes * 60), List.of(HOME_OF_A),
+                scope, maxCost, categories, NIGHT_START, NIGHT_START.plusSeconds(minutes * 60), List.of(HOME_OF_A), 15,
                 WeatherCondition.RAINY);
     }
 
@@ -134,7 +134,7 @@ class HardFilterTest {
         List<Offer> offers = offersOf(catalog);
         Set<Long> excluded = Set.of(7L);
         RecommendationQuery q = new RecommendationQuery(
-                Scope.CITY, 300, Set.of(IdeaCategory.SOCIAL), NIGHT_START, NIGHT_START.plusSeconds(90 * 60), List.of(),
+                Scope.CITY, 300, Set.of(IdeaCategory.SOCIAL), NIGHT_START, NIGHT_START.plusSeconds(90 * 60), List.of(), 15,
                 WeatherCondition.RAINY);
 
         for (LadderStep step : RelaxationLadder.steps(q)) {

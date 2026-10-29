@@ -233,7 +233,7 @@ public class RecommendationService {
     private void validateSlot(Long userId, Long partnerId, Instant start, Instant end) {
         Instant now = clock.instant();
         if (!start.isAfter(now) || start.isAfter(now.plus(Duration.ofDays(MutualSlotChecker.DAYS_AHEAD)))) {
-            throw new BadRequestException("Elige un horario de los próximos 14 días.");
+            throw new BadRequestException("Elige un horario de los próximos 7 días.");
         }
         if (Duration.between(start, end).toMinutes() < MIN_SLOT_MINUTES) {
             throw new BadRequestException("El horario debe durar al menos 60 minutos.");

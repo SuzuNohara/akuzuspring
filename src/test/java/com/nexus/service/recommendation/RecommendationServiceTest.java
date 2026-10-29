@@ -395,10 +395,10 @@ class RecommendationServiceTest {
         }
 
         @Test
-        @DisplayName("franja en el pasado o a mas de 14 dias, 400")
+        @DisplayName("franja en el pasado o a mas de una semana, 400")
         void outOfWindow() {
             Instant past = Instant.parse("2026-10-17T10:00:00Z");
-            Instant far = Instant.parse("2026-11-05T01:00:00Z");
+            Instant far = Instant.parse("2026-10-26T01:00:00Z");
             assertThatThrownBy(() -> service.request(ANA, params(ZoneType.NONE, null, null, null, past, past.plusSeconds(7200))))
                     .isInstanceOf(BadRequestException.class);
             assertThatThrownBy(() -> service.request(ANA, params(ZoneType.NONE, null, null, null, far, far.plusSeconds(7200))))

@@ -18,15 +18,15 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MutualSlotChecker {
 
-    /** Hasta donde se puede pedir una recomendacion. */
-    static final int DAYS_AHEAD = 14;
+    /** Hasta donde se puede pedir una recomendacion: una semana (regla de la pareja, 28-oct). */
+    static final int DAYS_AHEAD = 7;
 
     private final AvailabilityService availability;
 
     /**
      * Si {@code [start, end]} cabe completa en un hueco libre de los dos, el mismo dia.
      *
-     * @implNote O(d * s) con d dias y s huecos por dia en la ventana de 14 dias.
+     * @implNote O(d * s) con d dias y s huecos por dia en la ventana de 7 dias.
      */
     public boolean isMutualFree(Long user1, Long user2, Instant start, Instant end) {
         ZonedDateTime from = start.atZone(CatalogCandidateSource.CDMX);

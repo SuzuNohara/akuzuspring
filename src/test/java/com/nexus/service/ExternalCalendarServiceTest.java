@@ -3,9 +3,11 @@ package com.nexus.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.nexus.dto.ExternalEventDTO;
+import com.nexus.dto.SyncEventRequest;
 import com.nexus.entity.ExternalCalendar;
 import com.nexus.entity.ExternalEvent;
 import com.nexus.repository.EventRepository;
@@ -13,6 +15,8 @@ import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -67,5 +71,45 @@ class ExternalCalendarServiceTest {
         assertThat(mine.getLocation()).isEqualTo("Consultorio");
         assertThat(theirs.getTitle()).isEqualTo("Ocupado");
         assertThat(theirs.getLocation()).isNull();
+    }
+
+    // --- [avisos-calendario] U1: de que evento de Nexus salio la copia ---------------------------
+
+    private static SyncEventRequest copy(Long appEventId) {
+        SyncEventRequest r = new SyncEventRequest();
+        r.setExternalCalendarId(1L);
+        r.setDeviceEventId("dev-7");
+        r.setTitle("Cena");
+        r.setStartDatetime(FROM.plusSeconds(3600));
+        r.setEndDatetime(FROM.plusSeconds(7200));
+        r.setIsAllDay(false);
+        r.setAppEventId(appEventId);
+        return r;
+    }
+
+    @Test
+    @DisplayName("[avisos-calendario] la copia nueva guarda de que evento de Nexus salio")
+    void newCopyKeepsItsNexusEvent() {
+        when(externalEvents.findByExternalCalendarIdAndDeviceEventId(1L, "dev-7")).thenReturn(Optional.empty());
+
+        service.syncEvents(ME, List.of(copy(21L)));
+
+        ArgumentCaptor<ExternalEvent> saved = ArgumentCaptor.forClass(ExternalEvent.class);
+        verify(externalEvents).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getAppEventId()).isEqualTo(21L);
+    }
+
+    @Test
+    @DisplayName("[avisos-calendario] la sincronizacion periodica no borra de que evento salio la copia")
+    void periodicSyncKeepsTheNexusEvent() {
+        ExternalEvent existing = new ExternalEvent();
+        existing.setExternalCalendarId(1L);
+        existing.setDeviceEventId("dev-7");
+        existing.setAppEventId(21L);
+        when(externalEvents.findByExternalCalendarIdAndDeviceEventId(1L, "dev-7")).thenReturn(Optional.of(existing));
+
+        service.syncEvents(ME, List.of(copy(null)));
+
+        assertThat(existing.getAppEventId()).isEqualTo(21L);
     }
 }

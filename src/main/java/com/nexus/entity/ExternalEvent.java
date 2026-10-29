@@ -32,6 +32,13 @@ public class ExternalEvent {
     @Column(name = "device_event_id", length = 255)
     private String deviceEventId; // ID del evento en el dispositivo
 
+    /**
+     * [avisos-calendario] Evento de Nexus del que salio esta copia en el calendario del telefono;
+     * {@code null} = evento personal, que nunca genera conflicto (RF-24).
+     */
+    @Column(name = "app_event_id")
+    private Long appEventId;
+
     @Column(name = "title", nullable = false, length = 240)
     private String title;
 
@@ -84,6 +91,10 @@ public class ExternalEvent {
 
     @Column(name = "sync_hash", length = 64)
     private String syncHash; // Hash para detectar cambios más eficientemente
+
+    /** [avisos-calendario] Huella del ultimo conflicto avisado: se avisa una vez por cambio (RF-24). */
+    @Column(name = "conflict_hash", length = 64)
+    private String conflictHash;
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)

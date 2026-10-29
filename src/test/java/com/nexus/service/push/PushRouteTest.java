@@ -59,6 +59,22 @@ class PushRouteTest {
     }
 
     @Test
+    @DisplayName("[avisos-calendario] should open the free-time view of the calendar")
+    void shouldOpenTheFreeTimeViewOfTheCalendar() {
+        assertThat(PushRoute.dataFor(NoticeTypes.FREE_TIME, null, Map.of("freeTogether", "1")))
+                .containsEntry("route", "/(tabs)/calendario")
+                .containsEntry("freeTogether", "1");
+    }
+
+    @Test
+    @DisplayName("[avisos-calendario] should open the Nexus event that changed on the phone")
+    void shouldOpenTheNexusEventThatChangedOnThePhone() {
+        assertThat(PushRoute.dataFor(NoticeTypes.SYNC_CONFLICT, null, Map.of("eventId", "21")))
+                .containsEntry("route", "/(events)/edit-event")
+                .containsEntry("eventId", "21");
+    }
+
+    @Test
     @DisplayName("should fall back to the notices screen for an unknown type")
     void shouldFallBackToTheNoticesScreenForAnUnknownType() {
         assertThat(PushRoute.dataFor("SOMETHING_NEW", null, null))
@@ -81,7 +97,8 @@ class PushRouteTest {
     void shouldKeepEveryTypeWithinThe24CharactersOfTheColumn() {
         assertThat(java.util.List.of(
                         NoticeTypes.EVENT_PENDING, NoticeTypes.EVENT_CONFIRMED, NoticeTypes.EVENT_REJECTED,
-                        NoticeTypes.EVENT_DELETED, NoticeTypes.LINK_ESTABLISHED, NoticeTypes.LINK_DELETED))
+                        NoticeTypes.EVENT_DELETED, NoticeTypes.LINK_ESTABLISHED, NoticeTypes.LINK_DELETED,
+                        NoticeTypes.SYNC_CONFLICT, NoticeTypes.FREE_TIME))
                 .allSatisfy(type -> assertThat(type.length()).isLessThanOrEqualTo(24));
     }
 }

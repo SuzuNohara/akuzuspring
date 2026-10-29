@@ -35,4 +35,6 @@ public class SyncEventRequest {
     private Instant rruleUntilUtc;   // Fecha de fin de la recurrencia
     private Integer rruleCount;      // Número de ocurrencias
     private Instant lastDeviceUpdate; // Para detectar conflictos (RF-24)
+    /** [avisos-calendario] Evento de Nexus del que salio la copia; solo al copiarlo desde la app. */
+    private Long appEventId;
 }

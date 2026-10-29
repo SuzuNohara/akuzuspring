@@ -14,6 +14,8 @@ public final class PushRoute {
     static final String NOTICES = "/(events)/notifications";
     static final String HOME = "/(tabs)";
     static final String LINK = "/(tabs)/link";
+    static final String CALENDAR = "/(tabs)/calendario";
+    static final String EDIT_EVENT = "/(events)/edit-event";
 
     /** Los tipos de aviso de {@code PlanningService}. */
     static final Set<String> PLANNING_TYPES = Set.of(
@@ -42,6 +44,12 @@ public final class PushRoute {
         }
         if (NoticeTypes.LINK_ESTABLISHED.equals(type)) {
             return HOME;
+        }
+        if (NoticeTypes.FREE_TIME.equals(type)) {
+            return CALENDAR;
+        }
+        if (NoticeTypes.SYNC_CONFLICT.equals(type)) {
+            return EDIT_EVENT;
         }
         if (NoticeTypes.LINK_DELETED.equals(type)) {
             return LINK;

@@ -240,12 +240,17 @@ public class ExternalCalendarService {
         event.setIsExternal(true);
         event.setLastDeviceUpdate(request.getLastDeviceUpdate());
         event.setSyncHash(generateHash(request));
+        // La sincronizacion periodica no sabe de que evento de Nexus salio la copia: se conserva.
+        if (request.getAppEventId() != null) {
+            event.setAppEventId(request.getAppEventId());
+        }
     }
 
     private ExternalEvent createNewEvent(SyncEventRequest request) {
         ExternalEvent event = new ExternalEvent();
         event.setExternalCalendarId(request.getExternalCalendarId());
         event.setDeviceEventId(request.getDeviceEventId());
+        event.setAppEventId(request.getAppEventId());
         event.setTitle(request.getTitle());
         event.setStartDatetime(request.getStartDatetime());
         event.setEndDatetime(request.getEndDatetime());

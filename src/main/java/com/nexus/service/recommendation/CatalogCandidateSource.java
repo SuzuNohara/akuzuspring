@@ -92,7 +92,7 @@ public class CatalogCandidateSource implements CandidateSource {
         return catalog.stream()
                 .filter(a -> !excluded.contains(a.getId()) && !chosen.containsKey(a.getId()))
                 .filter(a -> matches(a, step, daypart))
-                .map(a -> toCandidate(a, step.query().references(), placesByActivity, context, random))
+                .map(a -> toCandidate(a, step.query().references(), step.query().radiusKm(), placesByActivity, context, random))
                 .flatMap(Optional::stream)
                 .sorted(BEST_FIRST)
                 .toList();
@@ -120,6 +120,7 @@ public class CatalogCandidateSource implements CandidateSource {
     private static Optional<Candidate> toCandidate(
             Activity a,
             List<Coordinates> references,
+            int radiusKm,
             Map<Long, List<ActivityPlaceView>> placesByActivity,
             CoupleContext context,
             RandomGenerator random) {
@@ -128,18 +129,19 @@ public class CatalogCandidateSource implements CandidateSource {
             return Optional.of(new Candidate(a, null, score));
         }
         List<ActivityPlaceView> options = placesByActivity.getOrDefault(a.getId(), List.of());
-        return nearestValidPlace(options, references, random).map(place -> new Candidate(a, place, score));
+        return nearestValidPlace(options, references, radiusKm, random).map(place -> new Candidate(a, place, score));
     }
 
     /**
-     * Lugar mas cercano a 15 km o menos de todas las referencias; a igual distancia, el mas popular.
+     * Lugar mas cercano a {@code radiusKm} o menos de todas las referencias ([rango-distancia]: la
+     * distancia que eligio la pareja, 15 km si no eligio); a igual distancia, el mas popular.
      * [kb-lugares] Sin referencias ("Sin zona"), uno al azar de los {@value #NO_ZONE_POOL} mas
      * populares, sin distancia. Lo usa tambien {@link VectorCandidateSource} (U7).
      *
      * @implNote O(p log p) con p lugares de la actividad.
      */
     static Optional<PlaceChoice> nearestValidPlace(
-            List<ActivityPlaceView> options, List<Coordinates> references, RandomGenerator random) {
+            List<ActivityPlaceView> options, List<Coordinates> references, int radiusKm, RandomGenerator random) {
         if (references.isEmpty()) {
             List<ActivityPlaceView> popular = options.stream().sorted(MOST_POPULAR).limit(NO_ZONE_POOL).toList();
             return popular.isEmpty()
@@ -150,7 +152,7 @@ public class CatalogCandidateSource implements CandidateSource {
                 .thenComparing(PlaceOption::view, MOST_POPULAR);
         return options.stream()
                 .map(p -> new PlaceOption(p, farthestKm(p, references)))
-                .filter(p -> p.distanceKm() <= ProximityFilter.DEFAULT_RADIUS_KM)
+                .filter(p -> p.distanceKm() <= radiusKm)
                 .min(nearest)
                 .map(p -> choice(p.view(), p.distanceKm()));
     }

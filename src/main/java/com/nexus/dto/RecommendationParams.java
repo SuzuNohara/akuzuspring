@@ -14,6 +14,7 @@ import java.time.Instant;
  * @param boroughCode codigo de alcaldia, obligatorio con {@link ZoneType#BOROUGH}
  * @param maxCostMxn tope por persona del deslizador, de 0 (solo gratis) a 15 000
  * @param category dimension del bienestar ({@code IdeaCategory}); {@code null} = cualquiera
+ * @param radiusKm [rango-distancia] distancia maxima (1, 3, 5, 10 o 15 km); {@code null} = 15
  */
 public record RecommendationParams(
         @NotNull ZoneType zoneType,
@@ -24,4 +25,5 @@ public record RecommendationParams(
         @Min(0) @Max(15_000) int maxCostMxn,
         String category,
         @NotNull Instant slotStart,
-        @NotNull Instant slotEnd) {}
+        @NotNull Instant slotEnd,
+        Integer radiusKm) {}

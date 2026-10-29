@@ -15,6 +15,7 @@ import java.util.Set;
  * @param borough solo con {@link ZoneType#BOROUGH}
  * @param references puntos para medir la distancia (ubicaciones de los dos o centro de la alcaldia);
  *     nunca se guardan (RN-30)
+ * @param radiusKm [rango-distancia] distancia maxima que eligieron
  */
 public record CoupleCriteria(
         ZoneType zoneType,
@@ -24,4 +25,5 @@ public record CoupleCriteria(
         Set<IdeaCategory> categories,
         Instant slotStart,
         Instant slotEnd,
-        List<Coordinates> references) {}
+        List<Coordinates> references,
+        int radiusKm) {}

@@ -19,7 +19,7 @@ class RecommendationParamsTest {
     private static final Instant START = Instant.parse("2026-10-18T01:00:00Z");
 
     private static Set<ConstraintViolation<RecommendationParams>> check(ZoneType zone, Scope scope, int cost, Instant start) {
-        return VALIDATOR.validate(new RecommendationParams(zone, null, null, null, scope, cost, null, start, START.plusSeconds(3600)));
+        return VALIDATOR.validate(new RecommendationParams(zone, null, null, null, scope, cost, null, start, START.plusSeconds(3600), null));
     }
 
     @Test

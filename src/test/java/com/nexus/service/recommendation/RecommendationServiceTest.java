@@ -110,7 +110,7 @@ class RecommendationServiceTest {
     }
 
     private static RecommendationParams params(ZoneType zone, String borough, Double lat, Double lon, Instant start, Instant end) {
-        return new RecommendationParams(zone, borough, lat, lon, Scope.ANY, 1500, null, start, end);
+        return new RecommendationParams(zone, borough, lat, lon, Scope.ANY, 1500, null, start, end, null);
     }
 
     private static RecommendationParams simple() {
@@ -152,7 +152,7 @@ class RecommendationServiceTest {
         when(requests.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(recommendations.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
         CoupleCriteria criteria = new CoupleCriteria(
-                ZoneType.NONE, null, Scope.HOME, 500, Set.of(), START, END, List.of());
+                ZoneType.NONE, null, Scope.HOME, 500, Set.of(), START, END, List.of(), 15);
 
         RecommendationBatch batch = service(true).requestForCouple(ANA, link, criteria);
 
@@ -176,7 +176,7 @@ class RecommendationServiceTest {
         when(requests.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(recommendations.saveAll(anyList())).thenAnswer(inv -> inv.getArgument(0));
         CoupleCriteria criteria = new CoupleCriteria(
-                ZoneType.NONE, null, Scope.ANY, 500, Set.of(), START, END, List.of());
+                ZoneType.NONE, null, Scope.ANY, 500, Set.of(), START, END, List.of(), 15);
 
         RecommendationBatch batch = service(true).requestForCouple(ANA, link, criteria);
 
@@ -350,6 +350,22 @@ class RecommendationServiceTest {
             verify(candidates).select(q.capture(), any(), anySet(), anyInt());
             assertThat(q.getValue().references()).singleElement().satisfies(c -> assertThat(c.lat()).isEqualTo(19.35));
         }
+
+        @Test
+        @DisplayName("[rango-distancia] sin distancia busca y guarda 15 km; con 5, busca y guarda 5")
+        void searchesAndStoresTheChosenDistance() {
+            service.request(ANA, simple());
+            RecommendationParams five = new RecommendationParams(
+                    ZoneType.NEAR_US, null, 19.43, -99.13, Scope.ANY, 1500, null, START, END, 5);
+            service.request(ANA, five);
+
+            ArgumentCaptor<RecommendationQuery> q = ArgumentCaptor.forClass(RecommendationQuery.class);
+            verify(candidates, org.mockito.Mockito.times(2)).select(q.capture(), any(), anySet(), anyInt());
+            assertThat(q.getAllValues()).extracting(RecommendationQuery::radiusKm).containsExactly(15, 5);
+            ArgumentCaptor<RecommendationRequest> r = ArgumentCaptor.forClass(RecommendationRequest.class);
+            verify(requests, org.mockito.Mockito.times(2)).save(r.capture());
+            assertThat(r.getAllValues()).extracting(RecommendationRequest::getRadiusKm).containsExactly(15, 5);
+        }
     }
 
     @Nested
@@ -409,9 +425,18 @@ class RecommendationServiceTest {
         }
 
         @Test
+        @DisplayName("[rango-distancia] una distancia fuera de la lista es 400 y no se guarda nada")
+        void badDistance() {
+            RecommendationParams p = new RecommendationParams(ZoneType.NONE, null, null, null, Scope.ANY, 0, null, START, END, 7);
+            assertThatThrownBy(() -> service.request(ANA, p)).isInstanceOf(BadRequestException.class)
+                    .hasMessage("Distancia no válida");
+            verify(requests, never()).save(any());
+        }
+
+        @Test
         @DisplayName("A8: categoria desconocida, 400")
         void badCategory() {
-            RecommendationParams p = new RecommendationParams(ZoneType.NONE, null, null, null, Scope.ANY, 0, "NADA", START, END);
+            RecommendationParams p = new RecommendationParams(ZoneType.NONE, null, null, null, Scope.ANY, 0, "NADA", START, END, null);
             assertThatThrownBy(() -> service.request(ANA, p)).isInstanceOf(BadRequestException.class);
         }
     }

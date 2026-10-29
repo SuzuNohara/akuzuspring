@@ -102,7 +102,7 @@ public class VectorCandidateSource implements CandidateSource {
             QdrantFilter filter = HardFilter.of(step, daypart, excluded);
             if (qdrant.count(properties.alias(), filter) > 0) {
                 List<QdrantHit> hits = qdrant.searchGroups(properties.alias(), vector, filter, GROUP_BY, properties.topK());
-                List<Candidate> found = candidatesOf(hits, query.references());
+                List<Candidate> found = candidatesOf(hits, query.references(), query.radiusKm());
                 return topUp(found.stream().limit(n).toList(), step.relaxed(), query, context, excluded, n);
             }
         }
@@ -135,7 +135,7 @@ public class VectorCandidateSource implements CandidateSource {
      * Actividades de MySQL en el orden de Qdrant, una por actividad, con su lugar de MySQL; las que
      * ya no existen se ignoran (S10) y las de ciudad sin lugar valido se descartan (R1).
      */
-    private List<Candidate> candidatesOf(List<QdrantHit> hits, List<Coordinates> references) {
+    private List<Candidate> candidatesOf(List<QdrantHit> hits, List<Coordinates> references, int radiusKm) {
         Map<Long, QdrantHit> byActivity = new LinkedHashMap<>();
         for (QdrantHit hit : hits) {
             byActivity.putIfAbsent(longOf(hit.payload().get("activity_id")), hit);
@@ -149,7 +149,7 @@ public class VectorCandidateSource implements CandidateSource {
                 result.add(new Hit(a, hit.payload().get("place_id") != null, hit.score()));
             }
         });
-        return relocate(result, references);
+        return relocate(result, references, radiusKm);
     }
 
     /** Una actividad encontrada en Qdrant; {@code inCity} si su oferta traia lugar. */
@@ -161,7 +161,7 @@ public class VectorCandidateSource implements CandidateSource {
      *
      * @implNote O(h + p log p) con h candidatas y p lugares de las de ciudad.
      */
-    private List<Candidate> relocate(List<Hit> found, List<Coordinates> references) {
+    private List<Candidate> relocate(List<Hit> found, List<Coordinates> references, int radiusKm) {
         List<Long> cityIds = found.stream().filter(Hit::inCity).map(h -> h.activity().getId()).toList();
         Map<Long, List<ActivityPlaceView>> placesByActivity = cityIds.isEmpty()
                 ? Map.of()
@@ -174,7 +174,7 @@ public class VectorCandidateSource implements CandidateSource {
                 continue;
             }
             List<ActivityPlaceView> options = placesByActivity.getOrDefault(h.activity().getId(), List.of());
-            CatalogCandidateSource.nearestValidPlace(options, references, random).ifPresentOrElse(
+            CatalogCandidateSource.nearestValidPlace(options, references, radiusKm, random).ifPresentOrElse(
                     place -> result.add(new Candidate(h.activity(), place, h.score())),
                     () -> log.debug("[kb-lugares] Actividad {} sin lugar valido en MySQL; se descarta", h.activity().getId()));
         }

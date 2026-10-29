@@ -201,4 +201,14 @@ class HardFilterTest {
                 new Coordinates((Double) center.get("lat"), (Double) center.get("lon")));
         return km * 1000 <= ((Number) geo.get("radius")).doubleValue();
     }
+
+    @Test
+    @DisplayName("[rango-distancia] should search within the distance the couple chose")
+    void shouldSearchWithinTheDistanceTheCoupleChose() {
+        RecommendationQuery q = query(Scope.CITY, 300, Set.of(IdeaCategory.SOCIAL), 90).withRadiusKm(3);
+
+        for (LadderStep step : RelaxationLadder.steps(q)) {
+            assertThat(HardFilter.of(step, Daypart.NIGHT, Set.of()).radiusM()).isEqualTo(3_000);
+        }
+    }
 }

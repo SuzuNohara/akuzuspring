@@ -231,7 +231,7 @@ class CatalogCandidateSourceTest {
     void nearestWithinRadius() {
         List<ActivityPlaceView> options = List.of(place(1, 10, 19.3500, -99.1620, 99.0), place(1, 11, 19.4330, -99.1340, 1.0));
 
-        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1));
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 15, new Random(1));
 
         assertThat(chosen).map(PlaceChoice::placeId).contains(11L);
     }
@@ -241,7 +241,7 @@ class CatalogCandidateSourceTest {
     void sameDistanceMostPopularWins() {
         List<ActivityPlaceView> options = List.of(place(1, 10, 19.4330, -99.1340, 2.0), place(1, 11, 19.4330, -99.1340, 8.0));
 
-        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1));
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 15, new Random(1));
 
         assertThat(chosen).map(PlaceChoice::placeId).contains(11L);
     }
@@ -251,7 +251,7 @@ class CatalogCandidateSourceTest {
     void noPlaceWithinRadius() {
         List<ActivityPlaceView> options = List.of(place(1, 20, 19.2571, -99.1036, 50.0));
 
-        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), new Random(1))).isEmpty();
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 15, new Random(1))).isEmpty();
     }
 
     @Test
@@ -262,7 +262,7 @@ class CatalogCandidateSourceTest {
                 .toList();
 
         Set<Long> picked = LongStream.range(0, 50)
-                .mapToObj(seed -> CatalogCandidateSource.nearestValidPlace(options, List.of(), new Random(seed)))
+                .mapToObj(seed -> CatalogCandidateSource.nearestValidPlace(options, List.of(), 15, new Random(seed)))
                 .map(choice -> choice.orElseThrow().placeId())
                 .collect(Collectors.toSet());
 
@@ -274,10 +274,27 @@ class CatalogCandidateSourceTest {
     void noZoneWithFewPlaces() {
         List<ActivityPlaceView> options = List.of(place(1, 1, 19.35, -99.16, null), place(1, 2, 19.35, -99.16, 3.0), place(1, 3, 19.35, -99.16, 1.0));
 
-        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(), new Random(7));
+        Optional<PlaceChoice> chosen = CatalogCandidateSource.nearestValidPlace(options, List.of(), 15, new Random(7));
 
         assertThat(chosen).map(PlaceChoice::placeId).get().isIn(1L, 2L, 3L);
         assertThat(chosen).map(PlaceChoice::distanceKm).isEmpty();
-        assertThat(CatalogCandidateSource.nearestValidPlace(List.of(), List.of(), new Random(7))).isEmpty();
+        assertThat(CatalogCandidateSource.nearestValidPlace(List.of(), List.of(), 15, new Random(7))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[rango-distancia] elige el lugar dentro de la distancia elegida, o ninguno")
+    void nearestWithinChosenRadius() {
+        double kmPerDegree = com.nexus.util.GeoDistance.EARTH_RADIUS_KM * Math.PI / 180;
+        List<ActivityPlaceView> options = List.of(
+                place(1, 2, ZOCALO.lat() + 2 / kmPerDegree, ZOCALO.lon(), 1.0),
+                place(1, 4, ZOCALO.lat() + 4 / kmPerDegree, ZOCALO.lon(), 9.0),
+                place(1, 12, ZOCALO.lat() + 12 / kmPerDegree, ZOCALO.lon(), 9.0));
+
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 3, new Random(1)))
+                .map(PlaceChoice::placeId).contains(2L);
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 1, new Random(1))).isEmpty();
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(ZOCALO), 15, new Random(1)))
+                .map(PlaceChoice::placeId).contains(2L);
+        assertThat(CatalogCandidateSource.nearestValidPlace(options, List.of(), 1, new Random(1))).isPresent();
     }
 }

@@ -12,6 +12,7 @@ import java.util.List;
  * y horario. Sin coordenadas: la ubicacion viaja solo en {@link ReadyRequest} (RN-30).
  *
  * @param categories codigos de {@code IdeaCategory}; vacio = cualquiera
+ * @param radiusKm [rango-distancia] distancia maxima (1, 3, 5, 10 o 15 km); {@code null} = 15
  */
 public record PlanningFilters(
         ZoneType zoneType,
@@ -20,4 +21,5 @@ public record PlanningFilters(
         @Min(0) @Max(15_000) Integer maxCostMxn,
         List<String> categories,
         Instant slotStart,
-        Instant slotEnd) {}
+        Instant slotEnd,
+        Integer radiusKm) {}

@@ -340,11 +340,42 @@ class PlanningServiceTest {
         PlanningSession s = session(PlanningStatus.ACTIVE);
         s.setInviterReady(true);
 
-        service.updateFilters(SAM, SESSION, new PlanningFilters(ZoneType.NONE, null, Scope.ANY, 3000, List.of(), null, null));
+        service.updateFilters(SAM, SESSION, new PlanningFilters(ZoneType.NONE, null, Scope.ANY, 3000, List.of(), null, null, null));
 
         assertThat(s.getInviterReady()).isFalse();
         verify(notifications).notifyGrouped(eq(ANA), eq(SESSION), eq("FILTERS"), eq("Sam cambió los filtros"),
                 eq("Sam eligió \"Sin preferencia\""), any());
+    }
+
+    @Test
+    @DisplayName("[rango-distancia] cambiar la distancia se guarda, quita el listo y se le avisa a la pareja")
+    void distanceChange() {
+        PlanningSession s = session(PlanningStatus.ACTIVE);
+        s.setZoneType(ZoneType.NEAR_US);
+        s.setScope(Scope.ANY);
+        s.setMaxCostMxn(1500);
+        s.setInviterReady(true);
+
+        PlanningView view = service.updateFilters(SAM, SESSION,
+                new PlanningFilters(ZoneType.NEAR_US, null, Scope.ANY, 1500, List.of(), null, null, 5));
+
+        assertThat(s.getRadiusKm()).isEqualTo(5);
+        assertThat(s.getInviterReady()).isFalse();
+        assertThat(view.filters().radiusKm()).isEqualTo(5);
+        verify(notifications).notifyGrouped(eq(ANA), eq(SESSION), eq("FILTERS"), eq("Sam cambió los filtros"),
+                eq("Sam cambió la distancia a 5 km"), any());
+    }
+
+    @Test
+    @DisplayName("[rango-distancia] una sesion vieja sin distancia se muestra con 15 km")
+    void oldSessionShowsFifteen() {
+        PlanningSession s = session(PlanningStatus.ACTIVE);
+        s.setZoneType(ZoneType.NEAR_US);
+
+        PlanningView view = service.updateFilters(SAM, SESSION,
+                new PlanningFilters(ZoneType.NEAR_US, null, Scope.ANY, 1500, List.of(), null, null, null));
+
+        assertThat(view.filters().radiusKm()).isEqualTo(15);
     }
 
     @Test
@@ -354,7 +385,7 @@ class PlanningServiceTest {
         s.setZoneType(ZoneType.NONE);
 
         service.updateFilters(SAM, SESSION,
-                new PlanningFilters(ZoneType.NONE, null, Scope.ANY, 1500, List.of("SOCIAL", "EMOCIONAL"), null, null));
+                new PlanningFilters(ZoneType.NONE, null, Scope.ANY, 1500, List.of("SOCIAL", "EMOCIONAL"), null, null, null));
 
         assertThat(s.getCategories()).isEqualTo("EMOCIONAL,SOCIAL");
         verify(notifications).notifyGrouped(eq(ANA), eq(SESSION), eq("FILTERS"), any(),
@@ -380,6 +411,7 @@ class PlanningServiceTest {
     void bothReadySearch() {
         PlanningSession s = session(PlanningStatus.ACTIVE);
         s.setZoneType(ZoneType.NEAR_US);
+        s.setRadiusKm(3);
         s.setSlotStart(NOW.plus(Duration.ofDays(1)));
         s.setSlotEnd(NOW.plus(Duration.ofDays(1)).plus(Duration.ofHours(2)));
         when(recommendationService.requestForCouple(eq(ANA), eq(link), any()))
@@ -394,6 +426,7 @@ class PlanningServiceTest {
         ArgumentCaptor<CoupleCriteria> criteria = ArgumentCaptor.forClass(CoupleCriteria.class);
         verify(recommendationService).requestForCouple(eq(ANA), eq(link), criteria.capture());
         assertThat(criteria.getValue().references()).hasSize(2);
+        assertThat(criteria.getValue().radiusKm()).isEqualTo(3);
         assertThat(s.getRequestId()).isEqualTo(REQUEST);
         assertThat(second.phase()).isEqualTo("OPTIONS");
         assertThat(second.relaxedFilters()).containsExactly("BUDGET");

@@ -2,7 +2,6 @@ package com.nexus.service.recommendation.agent;
 
 import com.nexus.integration.qdrant.QdrantFilter;
 import com.nexus.model.Scope;
-import com.nexus.service.ProximityFilter;
 import com.nexus.service.recommendation.Daypart;
 import com.nexus.service.recommendation.LadderStep;
 import com.nexus.service.recommendation.RecommendationQuery;
@@ -16,9 +15,6 @@ import java.util.stream.Collectors;
  * (RN-31), clima (CU40) y actividades ya usadas. Franja, distancia y clima nunca se relajan.
  */
 public final class HardFilter {
-
-    /** Radio de cada referencia en metros (15 km). */
-    static final int RADIUS_M = (int) Math.round(ProximityFilter.DEFAULT_RADIUS_KM * 1000);
 
     private static final Set<String> ANY_SCOPE = Set.of(Scope.HOME.name(), Scope.CITY.name());
 
@@ -40,7 +36,7 @@ public final class HardFilter {
                 step.daypartRequired() ? daypart.name() : null,
                 (int) q.slotMinutes(),
                 q.references(),
-                RADIUS_M,
+                q.radiusKm() * 1000,
                 q.weather(),
                 excluded);
     }

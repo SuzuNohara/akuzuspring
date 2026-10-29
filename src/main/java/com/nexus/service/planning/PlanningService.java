@@ -37,6 +37,7 @@ import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserRepository;
 import com.nexus.service.AppNotificationService;
 import com.nexus.service.EventService;
+import com.nexus.service.ProximityFilter;
 import com.nexus.service.ProximityFilter.Coordinates;
 import com.nexus.service.recommendation.CoupleCriteria;
 import com.nexus.service.recommendation.RecommendationService;
@@ -506,7 +507,7 @@ public class PlanningService {
         };
         RecommendationBatch batch = recommendationService.requestForCouple(s.getInviterId(), link, new CoupleCriteria(
                 s.getZoneType(), borough, s.getScope(), s.getMaxCostMxn(), categoriesOf(s),
-                s.getSlotStart(), s.getSlotEnd(), references));
+                s.getSlotStart(), s.getSlotEnd(), references, ProximityFilter.radiusOrDefault(s.getRadiusKm())));
         s.setRequestId(batch.requestId());
         s.setAdjustingUserId(null);
         clearProposal(s);
@@ -580,7 +581,7 @@ public class PlanningService {
                 : boroughs.findById(s.getBoroughId()).map(Borough::getCode).orElse(null);
         List<String> categories = categoriesOf(s).stream().map(Enum::name).sorted().toList();
         return new PlanningFilters(s.getZoneType(), boroughCode, s.getScope(), s.getMaxCostMxn(), categories,
-                s.getSlotStart(), s.getSlotEnd());
+                s.getSlotStart(), s.getSlotEnd(), ProximityFilter.radiusOrDefault(s.getRadiusKm()));
     }
 
     private static String voteName(Map<Long, List<PlanningVote>> byRec, Long recId, Long userId) {
@@ -604,6 +605,7 @@ public class PlanningService {
         }
         s.setSlotStart(f.slotStart());
         s.setSlotEnd(f.slotEnd());
+        s.setRadiusKm(ProximityFilter.radiusOrDefault(f.radiusKm()));
     }
 
     /** Primera diferencia, como frase para la pareja ("Sam cambió el presupuesto a $1,500"). */
@@ -611,6 +613,10 @@ public class PlanningService {
         if (f.zoneType() != s.getZoneType()
                 || (f.zoneType() == ZoneType.BOROUGH && !Objects.equals(boroughIdOf(f.boroughCode()), s.getBoroughId()))) {
             return Optional.of(who + " eligió " + zoneLabel(f));
+        }
+        int radiusKm = ProximityFilter.radiusOrDefault(f.radiusKm());
+        if (radiusKm != ProximityFilter.radiusOrDefault(s.getRadiusKm())) {
+            return Optional.of(who + " cambió la distancia a " + radiusKm + " km");
         }
         if (!Objects.equals(f.slotStart(), s.getSlotStart()) || !Objects.equals(f.slotEnd(), s.getSlotEnd())) {
             return Optional.of(who + " cambió el horario");

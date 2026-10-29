@@ -29,6 +29,7 @@ import com.nexus.repository.RecommendationRepository;
 import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserRepository;
 import com.nexus.service.EventService;
+import com.nexus.service.ProximityFilter;
 import com.nexus.service.ProximityFilter.Coordinates;
 import com.nexus.service.recommendation.agent.Composition;
 import com.nexus.service.recommendation.agent.Deadline;
@@ -99,17 +100,19 @@ public class RecommendationService {
     public RecommendationBatch request(Long userId, RecommendationParams p) {
         Link link = links.findActiveLinkByUserId(userId)
                 .orElseThrow(() -> new ForbiddenException("Necesitas un vínculo activo para pedir recomendaciones."));
+        int radiusKm = ProximityFilter.radiusOrDefault(p.radiusKm());
         validateSlot(userId, partnerOf(link, userId), p.slotStart(), p.slotEnd());
         IdeaCategory category = parseCategory(p.category());
         Optional<Borough> borough = boroughOf(p);
         Deadline deadline = Deadline.start(agent.budget().toMillis(), System::nanoTime);
         RecommendationQuery query = withForecast(new RecommendationQuery(
-                p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough)));
+                p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough))
+                .withRadiusKm(radiusKm));
         CoupleContext context = contexts.build(userId, link);
         Selection selection = candidates.select(query, context, Set.of(), poolSize());
         Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
         List<WrittenPick> picks = rankedByHistory(link, composition);
-        RecommendationRequest saved = requests.save(newRequest(userId, link, p, category, borough.orElse(null)));
+        RecommendationRequest saved = requests.save(newRequest(userId, link, p, category, borough.orElse(null), radiusKm));
         List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, picks));
         log.info("Solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
@@ -127,7 +130,8 @@ public class RecommendationService {
         validateSlot(requesterId, partnerOf(link, requesterId), c.slotStart(), c.slotEnd());
         Deadline deadline = Deadline.start(agent.budget().toMillis(), System::nanoTime);
         RecommendationQuery query = withForecast(new RecommendationQuery(
-                c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references()));
+                c.scope(), c.maxCostMxn(), c.categories(), c.slotStart(), c.slotEnd(), c.references())
+                .withRadiusKm(c.radiusKm()));
         CoupleContext context = contexts.build(requesterId, link);
         Selection selection = candidates.select(query, context, Set.of(), poolSize());
         Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
@@ -144,6 +148,7 @@ public class RecommendationService {
                         : c.categories().stream().map(Enum::name).sorted().collect(Collectors.joining(",")))
                 .slotStart(c.slotStart())
                 .slotEnd(c.slotEnd())
+                .radiusKm(c.radiusKm())
                 .build());
         List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, picks));
         log.info("Planeacion en pareja, solicitud {}: {} opciones ({}), filtros ampliados {}",
@@ -312,7 +317,7 @@ public class RecommendationService {
     // --- construccion -----------------------------------------------------------------------
 
     private RecommendationRequest newRequest(
-            Long userId, Link link, RecommendationParams p, IdeaCategory category, Borough borough) {
+            Long userId, Link link, RecommendationParams p, IdeaCategory category, Borough borough, int radiusKm) {
         return RecommendationRequest.builder()
                 .requester(users.getReferenceById(userId))
                 .link(link)
@@ -324,6 +329,7 @@ public class RecommendationService {
                 .category(category == null ? null : category.name())
                 .slotStart(p.slotStart())
                 .slotEnd(p.slotEnd())
+                .radiusKm(radiusKm)
                 .build();
     }
 

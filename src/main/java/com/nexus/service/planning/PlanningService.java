@@ -2,6 +2,7 @@ package com.nexus.service.planning;
 
 import com.nexus.dto.CreateEventResponse;
 import com.nexus.dto.RecommendationBatch;
+import com.nexus.dto.planning.InviteRequest;
 import com.nexus.dto.planning.LeftoverView;
 import com.nexus.dto.planning.MessageView;
 import com.nexus.dto.planning.PlanningFilters;
@@ -118,6 +119,19 @@ public class PlanningService {
 
     @Transactional
     public PlanningView invite(Long userId) {
+        return invite(userId, null);
+    }
+
+    /**
+     * [libres-juntos] Invitar con un horario: la planeacion empieza con el ya puesto en los filtros
+     * (los filtros solo se pueden cambiar en FILTERS, cuando la pareja ya acepto).
+     */
+    @Transactional
+    public PlanningView invite(Long userId, InviteRequest slot) {
+        if (slot != null && ((slot.slotStart() == null) != (slot.slotEnd() == null)
+                || (slot.slotStart() != null && !slot.slotEnd().isAfter(slot.slotStart())))) {
+            throw new BadRequestException("El horario necesita inicio y fin.");
+        }
         Link link = activeLink(userId);
         Optional<PlanningSession> open = sessions.findFirstByLinkIdAndStatusInOrderByIdDesc(link.getId(), OPEN)
                 .map(this::expireIfDue)
@@ -134,6 +148,8 @@ public class PlanningService {
                 .status(PlanningStatus.INVITED)
                 .inviteExpiresAt(PlanningRules.inviteExpiry(now))
                 .inviterSeenAt(now)
+                .slotStart(slot == null ? null : slot.slotStart())
+                .slotEnd(slot == null ? null : slot.slotEnd())
                 .build());
         notifications.notify(partnerId, s.getId(), T_INVITE,
                 nameOf(userId) + " te invita a planear una cita", "Únete para planear juntos.");

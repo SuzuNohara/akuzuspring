@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.nexus.dto.CreateEventResponse;
 import com.nexus.dto.EventResponse;
 import com.nexus.dto.RecommendationBatch;
+import com.nexus.dto.planning.InviteRequest;
 import com.nexus.dto.planning.PlanningFilters;
 import com.nexus.dto.planning.PlanningView;
 import com.nexus.dto.planning.ReadyRequest;
@@ -162,6 +163,28 @@ class PlanningServiceTest {
         assertThat(view.role()).isEqualTo("INVITER");
         assertThat(view.inviteExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
         verify(notifications).notify(eq(SAM), eq(SESSION), eq("INVITE"), eq("Ana te invita a planear una cita"), any());
+    }
+
+    @Test
+    @DisplayName("[libres-juntos] invitar con un horario lo deja puesto en los filtros")
+    void inviteWithSlot() {
+        Instant start = NOW.plus(Duration.ofHours(30));
+        Instant end = start.plus(Duration.ofHours(3));
+
+        PlanningView view = service.invite(ANA, new InviteRequest(start, end));
+
+        assertThat(view.filters().slotStart()).isEqualTo(start);
+        assertThat(view.filters().slotEnd()).isEqualTo(end);
+    }
+
+    @Test
+    @DisplayName("[libres-juntos] un horario sin fin o al reves no se acepta")
+    void inviteWithBadSlot() {
+        Instant start = NOW.plus(Duration.ofHours(30));
+
+        assertThatThrownBy(() -> service.invite(ANA, new InviteRequest(start, null))).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.invite(ANA, new InviteRequest(start, start.minus(Duration.ofHours(1)))))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test

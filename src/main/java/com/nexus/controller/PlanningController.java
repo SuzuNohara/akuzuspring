@@ -1,5 +1,6 @@
 package com.nexus.controller;
 
+import com.nexus.dto.planning.InviteRequest;
 import com.nexus.dto.planning.MessageRequest;
 import com.nexus.dto.planning.MessageView;
 import com.nexus.dto.planning.PlanningFilters;
@@ -33,10 +34,13 @@ public class PlanningController {
 
     private final PlanningService service;
 
+    /** [libres-juntos] El cuerpo es opcional: con un horario, la planeacion empieza con el. */
     @PostMapping("/invite")
-    public ResponseEntity<PlanningView> invite(@PathVariable Long userId, @AuthenticationPrincipal AuthenticatedUser me) {
+    public ResponseEntity<PlanningView> invite(@PathVariable Long userId,
+                                               @RequestBody(required = false) InviteRequest slot,
+                                               @AuthenticationPrincipal AuthenticatedUser me) {
         OwnershipGuard.requireSelf(me, userId);
-        return ResponseEntity.ok(service.invite(userId));
+        return ResponseEntity.ok(service.invite(userId, slot));
     }
 
     /** La planeacion abierta (o recien terminada); 204 si no hay. */

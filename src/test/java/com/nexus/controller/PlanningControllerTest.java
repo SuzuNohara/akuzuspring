@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.nexus.config.SecurityConfig;
+import com.nexus.dto.planning.InviteRequest;
 import com.nexus.dto.planning.PlanningMember;
 import com.nexus.dto.planning.PlanningView;
 import com.nexus.exception.ConflictException;
@@ -66,11 +67,23 @@ class PlanningControllerTest {
     @Test
     @DisplayName("invitar devuelve la planeacion")
     void invite() throws Exception {
-        given(service.invite(USER_ID)).willReturn(view("INVITED"));
+        given(service.invite(USER_ID, null)).willReturn(view("INVITED"));
         mockMvc.perform(post("/planning/" + USER_ID + "/invite").header("Authorization", BEARER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.phase").value("INVITED"))
                 .andExpect(jsonPath("$.partner.name").value("Sam"));
+    }
+
+    @Test
+    @DisplayName("[libres-juntos] invitar con un horario lo manda al servicio")
+    void inviteWithSlot() throws Exception {
+        InviteRequest slot = new InviteRequest(Instant.parse("2026-11-01T01:00:00Z"), Instant.parse("2026-11-01T04:00:00Z"));
+        given(service.invite(USER_ID, slot)).willReturn(view("INVITED"));
+        mockMvc.perform(post("/planning/" + USER_ID + "/invite").header("Authorization", BEARER)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"slotStart\":\"2026-11-01T01:00:00Z\",\"slotEnd\":\"2026-11-01T04:00:00Z\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phase").value("INVITED"));
     }
 
     @Test

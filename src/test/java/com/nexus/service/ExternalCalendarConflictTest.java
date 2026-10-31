@@ -199,4 +199,22 @@ class ExternalCalendarConflictTest {
         verify(externalEvents).saveAndFlush(saved.capture());
         assertThat(saved.getValue().getExportSignature()).isEqualTo(CalendarCopyPlanner.signatureOf(nexus));
     }
+
+    @Test
+    @DisplayName("[sync-calendario] de una serie llega otra ocurrencia a la misma hora: no avisa")
+    void seriesOccurrenceIsNotAConflict() {
+        SyncEventRequest week3 = fromPhone("Cena", START.plusSeconds(14 * 86400), END.plusSeconds(14 * 86400));
+        week3.setRecurrenceRule("FREQ=WEEKLY;BYDAY=SA");
+
+        assertThat(sync(week3)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] de una serie cambio la hora en el telefono: avisa")
+    void seriesNewTimeIsAConflict() {
+        SyncEventRequest moved = fromPhone("Cena", START.plusSeconds(14 * 86400 + 3600), END.plusSeconds(14 * 86400 + 3600));
+        moved.setRecurrenceRule("FREQ=WEEKLY;BYDAY=SA");
+
+        assertThat(sync(moved)).containsExactly("Cena");
+    }
 }

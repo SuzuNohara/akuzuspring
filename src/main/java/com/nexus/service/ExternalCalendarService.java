@@ -277,9 +277,10 @@ public class ExternalCalendarService {
         if (copy.getAppEventId() == null) {
             return Optional.empty();
         }
-        boolean unchanged = normalized(copy.getTitle()).equals(normalized(incoming.getTitle()))
-                && sameMinute(copy.getStartDatetime(), incoming.getStartDatetime())
-                && sameMinute(copy.getEndDatetime(), incoming.getEndDatetime());
+        // [sync-calendario] De una serie el telefono manda la primera ocurrencia de la ventana, no el
+        // inicio de la serie: ahi solo cuentan la hora del dia y la duracion.
+        boolean series = incoming.getRecurrenceRule() != null && !incoming.getRecurrenceRule().isBlank();
+        boolean unchanged = sameSlot(copy.getTitle(), copy.getStartDatetime(), copy.getEndDatetime(), incoming, series);
         if (unchanged) {
             return Optional.empty();
         }
@@ -288,15 +289,33 @@ public class ExternalCalendarService {
             return Optional.empty();
         }
         Event e = nexus.get();
-        boolean same = normalized(e.getTitle()).equals(normalized(incoming.getTitle()))
-                && sameMinute(e.getStartDateTime(), incoming.getStartDatetime())
-                && sameMinute(e.getEndDateTime(), incoming.getEndDatetime());
-        if (same) {
+        if (sameSlot(e.getTitle(), e.getStartDateTime(), e.getEndDateTime(), incoming, series)) {
             return Optional.empty();
         }
         String hash = sha256(normalized(incoming.getTitle()) + "|" + minute(incoming.getStartDatetime())
                 + "|" + minute(incoming.getEndDatetime()));
         return Optional.of(new Conflict(e, hash));
+    }
+
+    /**
+     * Mismo titulo y mismas horas al minuto; en una serie, misma hora del dia (CDMX) y misma
+     * duracion, sin importar la fecha.
+     */
+    private static boolean sameSlot(String title, Instant start, Instant end, SyncEventRequest incoming, boolean series) {
+        if (!normalized(title).equals(normalized(incoming.getTitle()))) {
+            return false;
+        }
+        if (!series) {
+            return sameMinute(start, incoming.getStartDatetime()) && sameMinute(end, incoming.getEndDatetime());
+        }
+        if (start == null || end == null || incoming.getStartDatetime() == null || incoming.getEndDatetime() == null) {
+            return false;
+        }
+        boolean sameTime = start.atZone(CDMX).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
+                .equals(incoming.getStartDatetime().atZone(CDMX).toLocalTime().truncatedTo(ChronoUnit.MINUTES));
+        boolean sameLength = ChronoUnit.MINUTES.between(start, end)
+                == ChronoUnit.MINUTES.between(incoming.getStartDatetime(), incoming.getEndDatetime());
+        return sameTime && sameLength;
     }
 
     /** Aviso en la campanita (y push): que cambio y como sigue en Nexus. */

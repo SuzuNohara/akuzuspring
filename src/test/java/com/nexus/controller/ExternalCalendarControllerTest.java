@@ -7,9 +7,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.nexus.config.SecurityConfig;
+import com.nexus.dto.CopyPlanDTO;
+import com.nexus.service.CalendarCopyPlanner;
 import com.nexus.security.AuthenticatedUser;
 import com.nexus.security.JwtService;
 import com.nexus.service.ExternalCalendarService;
@@ -51,6 +54,8 @@ class ExternalCalendarControllerTest {
     @Autowired private MockMvc mockMvc;
 
     @MockBean private ExternalCalendarService externalCalendarService;
+
+    @MockBean private CalendarCopyPlanner calendarCopyPlanner;
 
     @MockBean private JwtService jwtService;
 
@@ -225,5 +230,41 @@ class ExternalCalendarControllerTest {
                 .andExpect(status().isForbidden());
 
         verifyNoInteractions(externalCalendarService);
+    }
+
+    // --- [sync-calendario] RF-22: plan de copias ------------------------------------------------
+
+    @Test
+    @DisplayName("[sync-calendario] copy-plan devuelve 200 con el plan")
+    void copyPlanReturnsThePlan() throws Exception {
+        authenticateAs(USER_ID);
+        given(calendarCopyPlanner.planFor(org.mockito.ArgumentMatchers.eq(USER_ID), org.mockito.ArgumentMatchers.any()))
+                .willReturn(java.util.Optional.of(new CopyPlanDTO(1L, "cal-1", List.of(), List.of(), List.of())));
+
+        mockMvc.perform(get("/calendars/external/" + USER_ID + "/copy-plan").header("Authorization", BEARER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deviceCalendarId").value("cal-1"));
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] copy-plan devuelve 204 sin calendario destino")
+    void copyPlanWithoutTarget() throws Exception {
+        authenticateAs(USER_ID);
+        given(calendarCopyPlanner.planFor(org.mockito.ArgumentMatchers.eq(USER_ID), org.mockito.ArgumentMatchers.any()))
+                .willReturn(java.util.Optional.empty());
+
+        mockMvc.perform(get("/calendars/external/" + USER_ID + "/copy-plan").header("Authorization", BEARER))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] copy-plan de otra persona devuelve 403")
+    void copyPlanOfSomeoneElse() throws Exception {
+        authenticateAs(OTHER_USER_ID);
+
+        mockMvc.perform(get("/calendars/external/" + USER_ID + "/copy-plan").header("Authorization", BEARER))
+                .andExpect(status().isForbidden());
+
+        verifyNoInteractions(calendarCopyPlanner);
     }
 }

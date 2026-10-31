@@ -22,6 +22,10 @@ public interface ExternalCalendarRepository extends JpaRepository<ExternalCalend
     @Query("SELECT c FROM ExternalCalendar c WHERE c.userId = :userId AND c.deviceCalendarId = :deviceCalendarId AND c.deletedAt IS NULL")
     Optional<ExternalCalendar> findByUserIdAndDeviceCalendarId(Long userId, String deviceCalendarId);
     
+    /** [sync-calendario] RF-22: el calendario al que se copian los eventos de Nexus. */
+    @Query("SELECT c FROM ExternalCalendar c WHERE c.userId = :userId AND c.isActive = true AND c.exportEvents = true AND c.deletedAt IS NULL")
+    Optional<ExternalCalendar> findExportTarget(Long userId);
+
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM ExternalCalendar c WHERE c.userId = :userId AND c.deviceCalendarId = :deviceCalendarId AND c.deletedAt IS NULL")
     boolean existsByUserIdAndDeviceCalendarId(Long userId, String deviceCalendarId);
 }

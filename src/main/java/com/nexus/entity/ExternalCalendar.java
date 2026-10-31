@@ -48,6 +48,10 @@ public class ExternalCalendar {
     @Column(name = "sync_enabled", nullable = false)
     private Boolean syncEnabled = true;
 
+    /** [sync-calendario] RF-22: aqui se copian los eventos de Nexus confirmados (uno por persona). */
+    @Column(name = "export_events", nullable = false)
+    private Boolean exportEvents = false;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "privacy_mode", nullable = false, length = 20)
     private PrivacyMode privacyMode = PrivacyMode.BUSY_ONLY;

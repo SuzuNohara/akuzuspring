@@ -127,7 +127,8 @@ public class ExternalCalendarService {
         Long userId,
         String deviceCalendarId,
         Boolean syncEnabled,
-        String privacyMode
+        String privacyMode,
+        Boolean exportEvents
     ) {
         ExternalCalendar calendar = externalCalendarRepository
             .findByUserIdAndDeviceCalendarId(userId, deviceCalendarId)
@@ -139,9 +140,29 @@ public class ExternalCalendarService {
         if (privacyMode != null) {
             calendar.setPrivacyMode(ExternalCalendar.PrivacyMode.valueOf(privacyMode));
         }
+        if (exportEvents != null) {
+            setExportTarget(userId, calendar, exportEvents);
+        }
 
         ExternalCalendar saved = externalCalendarRepository.save(calendar);
         return ExternalCalendarDTO.fromEntity(saved);
+    }
+
+    /**
+     * [sync-calendario] RF-22 - Un solo calendario destino por persona. Al elegirlo se prende su
+     * sincronizacion, para que RF-24 vea los cambios que se hagan en las copias (R9).
+     */
+    private void setExportTarget(Long userId, ExternalCalendar target, boolean export) {
+        if (export) {
+            for (ExternalCalendar other : externalCalendarRepository.findByUserIdAndIsActiveTrue(userId)) {
+                if (!other.getId().equals(target.getId()) && Boolean.TRUE.equals(other.getExportEvents())) {
+                    other.setExportEvents(false);
+                    externalCalendarRepository.save(other);
+                }
+            }
+            target.setSyncEnabled(true);
+        }
+        target.setExportEvents(export);
     }
 
     /**

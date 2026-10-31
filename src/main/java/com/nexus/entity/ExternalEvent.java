@@ -39,6 +39,13 @@ public class ExternalEvent {
     @Column(name = "app_event_id")
     private Long appEventId;
 
+    /**
+     * [sync-calendario] RF-22: firma de lo que Nexus escribio la ultima vez en esta copia; si ya no
+     * coincide con su evento, la copia esta vieja. {@code null} = copia que Nexus no ha escrito.
+     */
+    @Column(name = "export_signature", length = 64)
+    private String exportSignature;
+
     @Column(name = "title", nullable = false, length = 240)
     private String title;
 

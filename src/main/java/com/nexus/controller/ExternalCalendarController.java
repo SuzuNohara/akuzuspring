@@ -3,6 +3,7 @@ package com.nexus.controller;
 import com.nexus.dto.*;
 import com.nexus.security.AuthenticatedUser;
 import com.nexus.security.OwnershipGuard;
+import com.nexus.service.CalendarCopyPlanner;
 import com.nexus.service.ExternalCalendarService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,22 @@ import java.util.Map;
 public class ExternalCalendarController {
 
     private final ExternalCalendarService externalCalendarService;
+    private final CalendarCopyPlanner calendarCopyPlanner;
+
+    /**
+     * [sync-calendario] RF-22: que crear, cambiar o borrar en el calendario destino del telefono.
+     * GET /api/calendars/external/:userId/copy-plan → 200 con el plan, 204 sin calendario destino.
+     */
+    @GetMapping("/{userId}/copy-plan")
+    public ResponseEntity<CopyPlanDTO> getCopyPlan(
+        @PathVariable Long userId,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+        return calendarCopyPlanner.planFor(userId, Instant.now())
+            .map(ResponseEntity::ok)
+            .orElseGet(() -> ResponseEntity.noContent().build());
+    }
 
     /**
      * RF-19: Vincular un calendario externo
@@ -100,14 +117,15 @@ public class ExternalCalendarController {
         @PathVariable String deviceCalendarId,
         @RequestParam(required = false) Boolean syncEnabled,
         @RequestParam(required = false) String privacyMode,
+        @RequestParam(required = false) Boolean exportEvents,
         @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
         OwnershipGuard.requireSelf(currentUser, userId);
         try {
-            log.info("PATCH /calendars/external/{}/{} - Actualizando configuración", 
+            log.info("PATCH /calendars/external/{}/{} - Actualizando configuración",
                 userId, deviceCalendarId);
             ExternalCalendarDTO result = externalCalendarService.updateCalendarSettings(
-                userId, deviceCalendarId, syncEnabled, privacyMode
+                userId, deviceCalendarId, syncEnabled, privacyMode, exportEvents
             );
             return ResponseEntity.ok(result);
         } catch (Exception e) {

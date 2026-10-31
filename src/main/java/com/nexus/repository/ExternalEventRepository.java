@@ -19,7 +19,11 @@ public interface ExternalEventRepository extends JpaRepository<ExternalEvent, Lo
     
     @Query("SELECT e FROM ExternalEvent e WHERE e.externalCalendarId IN :calendarIds AND e.deletedAt IS NULL")
     List<ExternalEvent> findByExternalCalendarIdIn(List<Long> calendarIds);
-    
+
+    /** [sync-calendario] RF-22: las copias de eventos de Nexus en esos calendarios. */
+    @Query("SELECT e FROM ExternalEvent e WHERE e.externalCalendarId IN :calendarIds AND e.appEventId IS NOT NULL AND e.deletedAt IS NULL")
+    List<ExternalEvent> findCopies(List<Long> calendarIds);
+
     @Query("SELECT e FROM ExternalEvent e WHERE e.externalCalendarId = :calendarId AND e.deviceEventId = :deviceEventId AND e.deletedAt IS NULL")
     Optional<ExternalEvent> findByExternalCalendarIdAndDeviceEventId(
         Long calendarId, 

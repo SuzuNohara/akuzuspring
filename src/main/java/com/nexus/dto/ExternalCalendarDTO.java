@@ -17,6 +17,7 @@ public class ExternalCalendarDTO {
     private String calendarSource;
     private String calendarColor;
     private Boolean syncEnabled;
+    private Boolean exportEvents;
     private String privacyMode;
     private Instant lastSync;
     private Boolean isActive;
@@ -29,6 +30,7 @@ public class ExternalCalendarDTO {
         dto.setCalendarSource(calendar.getSource().name());
         dto.setCalendarColor(calendar.getCalendarColor());
         dto.setSyncEnabled(calendar.getSyncEnabled());
+        dto.setExportEvents(calendar.getExportEvents());
         dto.setPrivacyMode(calendar.getPrivacyMode().name());
         dto.setLastSync(calendar.getLastSync());
         dto.setIsActive(calendar.getIsActive());

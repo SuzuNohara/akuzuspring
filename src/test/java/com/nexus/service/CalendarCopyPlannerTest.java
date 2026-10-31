@@ -125,7 +125,7 @@ class CalendarCopyPlannerTest {
     }
 
     @Test
-    @DisplayName("una copia con la misma firma no se toca")
+    @DisplayName("una copia con la misma firma no se toca; va en keep para revisar que siga en el telefono (R2)")
     void upToDateCopy() {
         Event e = confirmed(21L);
         copyOf(e, TARGET, "dev-21", CalendarCopyPlanner.signatureOf(e));
@@ -135,6 +135,8 @@ class CalendarCopyPlannerTest {
         assertThat(plan.create()).isEmpty();
         assertThat(plan.update()).isEmpty();
         assertThat(plan.remove()).isEmpty();
+        assertThat(plan.keep()).extracting(CopyItem::appEventId, CopyItem::deviceEventId)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple(21L, "dev-21"));
     }
 
     @Test

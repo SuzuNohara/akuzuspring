@@ -12,7 +12,9 @@ public record CopyPlanDTO(
         String deviceCalendarId,
         List<CopyItem> create,
         List<CopyItem> update,
-        List<CopyRemoval> remove) {
+        List<CopyRemoval> remove,
+        /** Copias al dia: si ya no estan en el telefono, la app las vuelve a crear (R2). */
+        List<CopyItem> keep) {
 
     /** Un evento de Nexus a copiar; {@code deviceEventId} es {@code null} al crear. */
     public record CopyItem(

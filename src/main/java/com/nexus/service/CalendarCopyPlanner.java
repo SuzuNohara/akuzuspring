@@ -67,6 +67,7 @@ public class CalendarCopyPlanner {
         List<Long> calendarIds = calendars.findByUserIdAndIsActiveTrue(userId).stream().map(ExternalCalendar::getId).toList();
 
         List<CopyItem> update = new ArrayList<>();
+        List<CopyItem> keep = new ArrayList<>();
         List<CopyRemoval> remove = new ArrayList<>();
         Set<Long> copied = new HashSet<>();
         for (ExternalEvent copy : externalEvents.findCopies(calendarIds)) {
@@ -81,6 +82,8 @@ public class CalendarCopyPlanner {
                 remove.add(removalOf(copy));
             } else if (!signatureOf(e).equals(copy.getExportSignature())) {
                 update.add(itemOf(e, copy.getDeviceEventId()));
+            } else {
+                keep.add(itemOf(e, copy.getDeviceEventId()));
             }
         }
 
@@ -88,7 +91,7 @@ public class CalendarCopyPlanner {
                 .filter(e -> e.getStatus() == EventStatus.CONFIRMED && isCurrent(e, now) && !copied.contains(e.getId()))
                 .map(e -> itemOf(e, null))
                 .toList();
-        return Optional.of(new CopyPlanDTO(target.getId(), target.getDeviceCalendarId(), create, update, remove));
+        return Optional.of(new CopyPlanDTO(target.getId(), target.getDeviceCalendarId(), create, update, remove, keep));
     }
 
     /** SHA-256 de titulo (sin espacios sobrantes), inicio y fin al minuto, y repeticion. */

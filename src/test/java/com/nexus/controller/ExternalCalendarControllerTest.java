@@ -239,7 +239,7 @@ class ExternalCalendarControllerTest {
     void copyPlanReturnsThePlan() throws Exception {
         authenticateAs(USER_ID);
         given(calendarCopyPlanner.planFor(org.mockito.ArgumentMatchers.eq(USER_ID), org.mockito.ArgumentMatchers.any()))
-                .willReturn(java.util.Optional.of(new CopyPlanDTO(1L, "cal-1", List.of(), List.of(), List.of())));
+                .willReturn(java.util.Optional.of(new CopyPlanDTO(1L, "cal-1", List.of(), List.of(), List.of(), List.of())));
 
         mockMvc.perform(get("/calendars/external/" + USER_ID + "/copy-plan").header("Authorization", BEARER))
                 .andExpect(status().isOk())

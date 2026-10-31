@@ -59,10 +59,16 @@ class ExternalCalendarConflictTest {
         copy.setExternalCalendarId(1L);
         copy.setDeviceEventId("dev-7");
         copy.setAppEventId(NEXUS_ID);
+        // [sync-calendario] Lo ultimo que se guardo de la copia: igual a Nexus.
+        copy.setTitle("Cena");
+        copy.setStartDatetime(START);
+        copy.setEndDatetime(END);
         when(externalEvents.findByExternalCalendarIdAndDeviceEventId(1L, "dev-7")).thenReturn(Optional.of(copy));
-        Event nexus = Event.builder().id(NEXUS_ID).title("Cena").startDateTime(START).endDateTime(END).build();
+        nexus = Event.builder().id(NEXUS_ID).title("Cena").startDateTime(START).endDateTime(END).build();
         when(events.findById(NEXUS_ID)).thenReturn(Optional.of(nexus));
     }
+
+    private Event nexus;
 
     private static SyncEventRequest fromPhone(String title, Instant start, Instant end) {
         SyncEventRequest r = new SyncEventRequest();
@@ -141,5 +147,56 @@ class ExternalCalendarConflictTest {
     @DisplayName("segundos y espacios de mas no cuentan como cambio")
     void secondsAndSpacesAreNotChanges() {
         assertThat(sync(fromPhone("  Cena  ", START.plusSeconds(30), END.plusSeconds(59)))).isEmpty();
+    }
+
+    // --- [sync-calendario] U3: se compara contra la copia guardada ------------------------------
+
+    @Test
+    @DisplayName("[sync-calendario] si cambio Nexus y el telefono trae lo guardado, no avisa")
+    void nexusChangedIsNotAConflict() {
+        nexus.setStartDateTime(START.plusSeconds(3600));
+        nexus.setEndDateTime(END.plusSeconds(3600));
+
+        assertThat(sync(fromPhone("Cena", START, END))).isEmpty();
+        verify(appNotifications, never()).notify(anyLong(), any(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] si en el telefono la dejan igual que Nexus, no avisa")
+    void phoneMatchesNexusAgain() {
+        nexus.setTitle("Cena con Sam");
+
+        assertThat(sync(fromPhone("Cena con Sam", START, END))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] lo que escribe Nexus se guarda con su firma, sin avisar")
+    void fromNexusSavesTheSignature() {
+        copy.setConflictHash("huella-vieja");
+        nexus.setTitle("Cena con Sam");
+        SyncEventRequest written = fromPhone("Cena con Sam", START, END);
+        written.setAppEventId(NEXUS_ID);
+        written.setFromNexus(true);
+
+        assertThat(sync(written)).isEmpty();
+        assertThat(copy.getTitle()).isEqualTo("Cena con Sam");
+        assertThat(copy.getExportSignature()).isEqualTo(CalendarCopyPlanner.signatureOf(nexus));
+        assertThat(copy.getConflictHash()).isNull();
+        verify(appNotifications, never()).notify(anyLong(), any(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] una copia nueva escrita por Nexus guarda su firma")
+    void newCopyFromNexusSavesTheSignature() {
+        when(externalEvents.findByExternalCalendarIdAndDeviceEventId(1L, "dev-7")).thenReturn(Optional.empty());
+        SyncEventRequest written = fromPhone("Cena", START, END);
+        written.setAppEventId(NEXUS_ID);
+        written.setFromNexus(true);
+        org.mockito.ArgumentCaptor<ExternalEvent> saved = org.mockito.ArgumentCaptor.forClass(ExternalEvent.class);
+
+        sync(written);
+
+        verify(externalEvents).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getExportSignature()).isEqualTo(CalendarCopyPlanner.signatureOf(nexus));
     }
 }

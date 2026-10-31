@@ -37,4 +37,9 @@ public class SyncEventRequest {
     private Instant lastDeviceUpdate; // Para detectar conflictos (RF-24)
     /** [avisos-calendario] Evento de Nexus del que salio la copia; solo al copiarlo desde la app. */
     private Long appEventId;
+    /**
+     * [sync-calendario] RF-22: la escribio Nexus en el telefono (no la cambio la persona); se guarda
+     * con su firma y nunca es conflicto.
+     */
+    private Boolean fromNexus = false;
 }

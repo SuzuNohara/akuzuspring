@@ -113,4 +113,60 @@ class ExternalCalendarServiceTest {
 
         assertThat(existing.getAppEventId()).isEqualTo(21L);
     }
+
+    // --- [sync-calendario] U4: las copias no salen en el calendario; U3: borrar una copia --------
+
+    @Test
+    @DisplayName("[sync-calendario] las copias de eventos de Nexus no salen ni a la duena ni a la pareja")
+    void copiesAreHidden() {
+        ExternalCalendar calendar = new ExternalCalendar();
+        calendar.setId(1L);
+        calendar.setUserId(ME);
+        ExternalEvent personal = new ExternalEvent();
+        personal.setExternalCalendarId(1L);
+        personal.setTitle("Dentista");
+        personal.setStartDatetime(FROM.plusSeconds(3600));
+        personal.setEndDatetime(FROM.plusSeconds(7200));
+        personal.setVisibility(ExternalEvent.Visibility.DEFAULT);
+        ExternalEvent copy = new ExternalEvent();
+        copy.setExternalCalendarId(1L);
+        copy.setTitle("Cena");
+        copy.setAppEventId(21L);
+        copy.setStartDatetime(FROM.plusSeconds(3600));
+        copy.setEndDatetime(FROM.plusSeconds(7200));
+        copy.setVisibility(ExternalEvent.Visibility.DEFAULT);
+        when(calendars.findByUserIdAndIsActiveTrue(ME)).thenReturn(List.of(calendar));
+        when(externalEvents.findEventsByCalendarsAndDateRange(eq(List.of(1L)), any(), any()))
+                .thenReturn(List.of(personal, copy));
+
+        assertThat(service.getEventsWithPrivacy(ME, FROM, TO, null))
+                .extracting(ExternalEventDTO::getTitle).containsExactly("Dentista");
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] borrar una copia de un calendario propio")
+    void deleteOwnCopy() {
+        ExternalCalendar calendar = new ExternalCalendar();
+        calendar.setId(1L);
+        calendar.setUserId(ME);
+        when(calendars.findById(1L)).thenReturn(Optional.of(calendar));
+
+        service.deleteCopy(ME, 1L, "dev-7");
+
+        verify(externalEvents).softDeleteByExternalCalendarIdAndDeviceEventId(1L, "dev-7");
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] no se puede borrar una copia de un calendario ajeno")
+    void deleteSomeoneElsesCopy() {
+        ExternalCalendar calendar = new ExternalCalendar();
+        calendar.setId(1L);
+        calendar.setUserId(PARTNER);
+        when(calendars.findById(1L)).thenReturn(Optional.of(calendar));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.deleteCopy(ME, 1L, "dev-7"))
+                .isInstanceOf(com.nexus.exception.ForbiddenException.class);
+        org.mockito.Mockito.verify(externalEvents, org.mockito.Mockito.never())
+                .softDeleteByExternalCalendarIdAndDeviceEventId(any(), any());
+    }
 }

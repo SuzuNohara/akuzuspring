@@ -4,6 +4,7 @@ import com.nexus.dto.*;
 import com.nexus.entity.Event;
 import com.nexus.entity.ExternalCalendar;
 import com.nexus.entity.ExternalEvent;
+import com.nexus.exception.ForbiddenException;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
@@ -184,11 +185,16 @@ public class ExternalCalendarService {
                         request.getDeviceEventId()
                     );
 
+                boolean fromNexus = Boolean.TRUE.equals(request.getFromNexus());
                 if (existing.isPresent()) {
-                    // RF-24: solo una copia de un evento creado en Nexus puede estar en conflicto
+                    // RF-24: solo una copia de un evento creado en Nexus puede estar en conflicto.
+                    // [sync-calendario] Se compara contra lo guardado antes de actualizarlo.
                     ExternalEvent event = existing.get();
+                    Optional<Conflict> conflict = fromNexus ? Optional.empty() : conflictOf(event, request);
                     updateExistingEvent(event, request);
-                    Optional<Conflict> conflict = conflictOf(event, request);
+                    if (fromNexus) {
+                        event.setExportSignature(signatureOfNexusEvent(event.getAppEventId()));
+                    }
                     if (conflict.isEmpty()) {
                         event.setConflictHash(null);
                     } else if (!conflict.get().hash().equals(event.getConflictHash())) {
@@ -202,6 +208,9 @@ public class ExternalCalendarService {
                     updated++;
                 } else {
                     ExternalEvent newEvent = createNewEvent(request);
+                    if (fromNexus) {
+                        newEvent.setExportSignature(signatureOfNexusEvent(newEvent.getAppEventId()));
+                    }
                     externalEventRepository.saveAndFlush(newEvent);
                     created++;
                 }
@@ -231,19 +240,47 @@ public class ExternalCalendarService {
         return result;
     }
 
+    /**
+     * [sync-calendario] RF-22 - La app quito esta copia del telefono (o ya no estaba ahi): se borra
+     * (logico) para que el siguiente plan la vuelva a crear si hace falta.
+     *
+     * @throws ForbiddenException si el calendario no es de la persona
+     */
+    @Transactional
+    public void deleteCopy(Long userId, Long externalCalendarId, String deviceEventId) {
+        ExternalCalendar calendar = externalCalendarRepository.findById(externalCalendarId)
+            .filter(c -> c.getUserId().equals(userId))
+            .orElseThrow(() -> new ForbiddenException("El calendario no es tuyo"));
+        externalEventRepository.softDeleteByExternalCalendarIdAndDeviceEventId(calendar.getId(), deviceEventId);
+    }
+
+    /** [sync-calendario] Firma del evento de Nexus que se acaba de escribir en el telefono. */
+    private String signatureOfNexusEvent(Long appEventId) {
+        return appEventId == null ? null
+                : eventRepository.findById(appEventId).map(CalendarCopyPlanner::signatureOf).orElse(null);
+    }
+
     /** [avisos-calendario] Copia del telefono que ya no coincide con su evento de Nexus. */
     record Conflict(Event nexusEvent, String hash) {}
 
     /**
-     * RF-24 - La copia esta en conflicto si salio de un evento de Nexus que sigue existiendo y su
-     * titulo, inicio o fin ya no coinciden con los de Nexus. Un evento personal (sin {@code
-     * appEventId}) nunca esta en conflicto, aunque cambie. Las horas se comparan al minuto y el
-     * titulo sin espacios sobrantes.
+     * RF-24 - La copia esta en conflicto si salio de un evento de Nexus que sigue existiendo, se
+     * cambio en el telefono (ya no es lo guardado) y no quedo igual que Nexus. Si solo cambio Nexus,
+     * el telefono trae lo guardado y no es conflicto ([sync-calendario]). Un evento personal (sin
+     * {@code appEventId}) nunca esta en conflicto, aunque cambie. Las horas se comparan al minuto y
+     * el titulo sin espacios sobrantes.
      *
+     * @param copy la copia como estaba guardada, antes de actualizarla
      * @return la huella de lo que trae el telefono, para avisar una sola vez por cambio
      */
     Optional<Conflict> conflictOf(ExternalEvent copy, SyncEventRequest incoming) {
         if (copy.getAppEventId() == null) {
+            return Optional.empty();
+        }
+        boolean unchanged = normalized(copy.getTitle()).equals(normalized(incoming.getTitle()))
+                && sameMinute(copy.getStartDatetime(), incoming.getStartDatetime())
+                && sameMinute(copy.getEndDatetime(), incoming.getEndDatetime());
+        if (unchanged) {
             return Optional.empty();
         }
         Optional<Event> nexus = eventRepository.findById(copy.getAppEventId()).filter(e -> e.getDeletedAt() == null);
@@ -412,7 +449,9 @@ public class ExternalCalendarService {
         Map<Long, ExternalCalendar> calendarMap = calendars.stream()
             .collect(Collectors.toMap(ExternalCalendar::getId, cal -> cal));
 
+        // [sync-calendario] Las copias de eventos de Nexus no se muestran: el evento ya sale de Nexus.
         return events.stream()
+            .filter(event -> event.getAppEventId() == null)
             .map(event -> {
                 ExternalCalendar calendar = calendarMap.get(event.getExternalCalendarId());
                 if (!masked) {

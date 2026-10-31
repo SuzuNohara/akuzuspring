@@ -28,6 +28,22 @@ public class ExternalCalendarController {
     private final CalendarCopyPlanner calendarCopyPlanner;
 
     /**
+     * [sync-calendario] RF-22: la app quito una copia del telefono.
+     * DELETE /api/calendars/external/:userId/copies/:externalCalendarId/:deviceEventId → 204.
+     */
+    @DeleteMapping("/{userId}/copies/{externalCalendarId}/{deviceEventId}")
+    public ResponseEntity<Void> deleteCopy(
+        @PathVariable Long userId,
+        @PathVariable Long externalCalendarId,
+        @PathVariable String deviceEventId,
+        @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        OwnershipGuard.requireSelf(currentUser, userId);
+        externalCalendarService.deleteCopy(userId, externalCalendarId, deviceEventId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * [sync-calendario] RF-22: que crear, cambiar o borrar en el calendario destino del telefono.
      * GET /api/calendars/external/:userId/copy-plan → 200 con el plan, 204 sin calendario destino.
      */

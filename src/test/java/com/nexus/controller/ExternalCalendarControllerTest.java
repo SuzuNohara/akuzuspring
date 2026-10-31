@@ -258,6 +258,28 @@ class ExternalCalendarControllerTest {
     }
 
     @Test
+    @DisplayName("[sync-calendario] borrar una copia propia devuelve 204")
+    void deleteOwnCopy() throws Exception {
+        authenticateAs(USER_ID);
+
+        mockMvc.perform(delete("/calendars/external/" + USER_ID + "/copies/1/dev-7").header("Authorization", BEARER))
+                .andExpect(status().isNoContent());
+
+        org.mockito.Mockito.verify(externalCalendarService).deleteCopy(USER_ID, 1L, "dev-7");
+    }
+
+    @Test
+    @DisplayName("[sync-calendario] borrar una copia de un calendario ajeno devuelve 403")
+    void deleteCopyOfSomeoneElsesCalendar() throws Exception {
+        authenticateAs(USER_ID);
+        org.mockito.BDDMockito.willThrow(new com.nexus.exception.ForbiddenException("ajeno"))
+                .given(externalCalendarService).deleteCopy(USER_ID, 1L, "dev-7");
+
+        mockMvc.perform(delete("/calendars/external/" + USER_ID + "/copies/1/dev-7").header("Authorization", BEARER))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     @DisplayName("[sync-calendario] copy-plan de otra persona devuelve 403")
     void copyPlanOfSomeoneElse() throws Exception {
         authenticateAs(OTHER_USER_ID);

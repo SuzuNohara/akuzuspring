@@ -65,7 +65,7 @@ class FreeTimeNotifierTest {
     }
 
     @Test
-    @DisplayName("cuenta solo los de 1 hora o mas que no han terminado y elige el mas cercano")
+    @DisplayName("[libres-juntos] cuenta los horarios limpios y propone el del dia mas cercano")
     void summaryCountsLongEnoughAndPicksTheNearest() {
         Optional<FreeTimeSummary> s = FreeTimeNotifier.summaryOf(mutual(
                 day("2026-11-07", "10:00-20:00"),
@@ -73,9 +73,10 @@ class FreeTimeNotifierTest {
                 day("2026-11-04", "19:00-20:00")), 60, NOW);
 
         assertThat(s).isPresent();
-        assertThat(s.get().count()).isEqualTo(3);
-        assertThat(s.get().first().date()).isEqualTo(LocalDate.of(2026, 11, 2));
-        assertThat(s.get().first().start()).isEqualTo(LocalTime.of(19, 0));
+        // 7 nov: 10-13, 13-19, 19-20; 2 nov: 19-22; 4 nov: 19-20. Lo de las 7:00 ya paso y 18:00-18:30 es corto.
+        assertThat(s.get().count()).isEqualTo(5);
+        assertThat(s.get().best().date()).isEqualTo(LocalDate.of(2026, 11, 2));
+        assertThat(s.get().best().start()).isEqualTo(LocalTime.of(19, 0));
     }
 
     @Test
@@ -86,8 +87,8 @@ class FreeTimeNotifierTest {
     }
 
     @Test
-    @DisplayName("con 4 horarios les avisa a los dos, con el mas cercano")
-    void notifiesBothWithTheNearest() {
+    @DisplayName("[libres-juntos] les avisa a los dos con la mejor propuesta, en tono calido")
+    void notifiesBothWithTheBestProposal() {
         given(links.findAllActive()).willReturn(List.of(link(1, 4, 9)));
         given(availability.findMutualAvailability(4L, 9L, 7)).willReturn(mutual(
                 day("2026-11-07", "10:00-20:00", "21:00-23:00"), day("2026-11-08", "10:00-12:00", "13:00-15:00")));
@@ -96,21 +97,22 @@ class FreeTimeNotifierTest {
 
         for (long member : new long[] {4, 9}) {
             verify(notifications).notify(eq(member), eq(null), eq(NoticeTypes.FREE_TIME),
-                    eq("Tienen 4 horarios libres juntos"), eq("El más cercano: sábado de 10:00 a 20:00."),
+                    eq("Esta semana tienen tiempo juntos"),
+                    eq("El sábado en la tarde tienen 6 h libres. ¿Planeamos algo?"),
                     eq(Map.of("freeTogether", "1")));
         }
     }
 
     @Test
-    @DisplayName("con uno solo dice 'horario libre'")
-    void oneSlotIsSingular() {
+    @DisplayName("[libres-juntos] hoy y mañana se dicen sin articulo")
+    void todayAndTomorrowWithoutArticle() {
         given(links.findAllActive()).willReturn(List.of(link(1, 4, 9)));
-        given(availability.findMutualAvailability(4L, 9L, 7)).willReturn(mutual(day("2026-11-05", "17:00-19:00")));
+        given(availability.findMutualAvailability(4L, 9L, 7)).willReturn(mutual(day("2026-11-03", "17:00-19:00")));
 
         notifier(true).weekly();
 
-        verify(notifications).notify(eq(4L), eq(null), eq(NoticeTypes.FREE_TIME), eq("Tienen 1 horario libre juntos"),
-                eq("El más cercano: jueves de 17:00 a 19:00."), any());
+        verify(notifications).notify(eq(4L), eq(null), eq(NoticeTypes.FREE_TIME), eq("Esta semana tienen tiempo juntos"),
+                eq("Mañana en la tarde tienen 2 h libres. ¿Planeamos algo?"), any());
     }
 
     @Test

@@ -10,8 +10,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,7 +30,6 @@ public class FreeTimeNotifier {
 
     static final int DAYS_AHEAD = 7;
     private static final ZoneId CDMX = ZoneId.of("America/Mexico_City");
-    private static final String[] WEEKDAYS = {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"};
 
     private final FreeTimeProperties properties;
     private final LinkRepository links;
@@ -43,8 +40,8 @@ public class FreeTimeNotifier {
     /** Un horario libre de los dos. */
     record FreeSlot(LocalDate date, LocalTime start, LocalTime end) {}
 
-    /** Cuantos horarios libres hay y cual es el mas cercano. */
-    record FreeTimeSummary(int count, FreeSlot first) {}
+    /** [libres-juntos] Cuantos horarios libres limpios hay y cual se propone. */
+    record FreeTimeSummary(int count, FreeTimeProposals.Window best) {}
 
     @Scheduled(cron = "${nexus.free-time.cron:0 0 9 * * MON}", zone = "America/Mexico_City")
     public void weekly() {
@@ -64,24 +61,25 @@ public class FreeTimeNotifier {
     void notifyCouple(Link link) {
         Long a = link.getInitiatorUser().getId();
         Long b = link.getPartnerUser().getId();
+        LocalDateTime now = LocalDateTime.now(clock.withZone(CDMX));
         Optional<FreeTimeSummary> summary = summaryOf(
-                availability.findMutualAvailability(a, b, DAYS_AHEAD), properties.minMinutes(), LocalDateTime.now(clock.withZone(CDMX)));
+                availability.findMutualAvailability(a, b, DAYS_AHEAD), properties.minMinutes(), now);
         if (summary.isEmpty()) {
             return;
         }
-        int n = summary.get().count();
-        String title = n == 1 ? "Tienen 1 horario libre juntos" : "Tienen " + n + " horarios libres juntos";
-        FreeSlot first = summary.get().first();
-        String body = "El más cercano: " + WEEKDAYS[first.date().getDayOfWeek().getValue() - 1]
-                + " de " + first.start() + " a " + first.end() + ".";
+        // [libres-juntos] La mejor propuesta, como la ve la app, en tono calido.
+        FreeTimeProposals.Label label = FreeTimeProposals.label(summary.get().best(), now.toLocalDate());
+        String title = "Esta semana tienen tiempo juntos";
+        String body = sentenceStart(label.when()) + " tienen " + label.length() + ". ¿Planeamos algo?";
         for (Long member : List.of(a, b)) {
             notifications.notify(member, null, NoticeTypes.FREE_TIME, title, body, Map.of("freeTogether", "1"));
         }
     }
 
     /**
-     * Horarios libres de al menos {@code minMinutes} que todavia no terminan; el primero es el mas
-     * cercano. Vacio si no hay ninguno.
+     * [libres-juntos] Los horarios libres limpios (desde ahora, a :00/:30, partidos en manana, tarde y
+     * noche, de al menos {@code minMinutes}) y la propuesta del dia mas cercano. Vacio si no hay
+     * ninguno.
      *
      * @implNote O(s log s) con s horarios libres de la semana.
      */
@@ -92,10 +90,19 @@ public class FreeTimeNotifier {
                 .flatMap(d -> ((List<Map<String, String>>) d.get("mutualFreeSlots")).stream()
                         .map(s -> new FreeSlot(LocalDate.parse((String) d.get("date")),
                                 LocalTime.parse(s.get("start")), LocalTime.parse(s.get("end")))))
-                .filter(s -> ChronoUnit.MINUTES.between(s.start(), s.end()) >= minMinutes)
-                .filter(s -> s.date().atTime(s.end()).isAfter(now))
-                .sorted(Comparator.comparing(FreeSlot::date).thenComparing(FreeSlot::start))
                 .toList();
-        return slots.isEmpty() ? Optional.empty() : Optional.of(new FreeTimeSummary(slots.size(), slots.get(0)));
+        List<FreeTimeProposals.Window> windows = FreeTimeProposals.windowsOf(slots, now, true).stream()
+                .filter(w -> w.minutes() >= minMinutes)
+                .toList();
+        List<FreeTimeProposals.Window> proposals = FreeTimeProposals.proposalsOf(windows, 1);
+        return proposals.isEmpty() ? Optional.empty() : Optional.of(new FreeTimeSummary(windows.size(), proposals.get(0)));
+    }
+
+    /** "Sábado en la tarde" → "El sábado en la tarde"; "Hoy…" y "Mañana…" se quedan igual. */
+    private static String sentenceStart(String when) {
+        if (when.startsWith("Hoy") || when.startsWith("Mañana")) {
+            return when;
+        }
+        return "El " + Character.toLowerCase(when.charAt(0)) + when.substring(1);
     }
 }

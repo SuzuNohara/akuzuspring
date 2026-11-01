@@ -113,14 +113,17 @@ def main():
         f"Servidor: `{a.base}`. Hueco usado: {ini.astimezone(CDMX):%a %d %b %H:%M}–{fin.astimezone(CDMX):%H:%M}.",
         "Recomendacion: sin filtro de distancia, cualquier lugar, hasta $1,500.", "",
         "## 1. RNF-12 (una recomendacion a la vez, limite 10 s)", "",
-        "| # | HTTP | Tiempo (s) | Cumple |", "|---|---|---|---|",
+        "| # | HTTP | Tiempo (s) | Cumple | Selección |", "|---|---|---|---|---|",
     ]
     secuenciales = []
     for i in range(1, a.secuencial + 1):
-        s, t, _ = recomendar()
+        s, t, body = recomendar()
         secuenciales.append(t)
-        lineas.append(f"| {i} | {s} | {t:.2f} | {'si' if s == 200 and t <= LIMITE_RNF12 else 'no'} |")
-        print(f"recomendacion {i}: HTTP {s} en {t:.2f} s")
+        # VECTOR = busqueda en Qdrant; CATALOG = catalogo de MySQL. Quien redacto (Mistral o
+        # reglas) solo sale en el registro del backend: "compose mode=...".
+        fuente = json.loads(body).get("selectionSource", "?") if s == 200 else "—"
+        lineas.append(f"| {i} | {s} | {t:.2f} | {'si' if s == 200 and t <= LIMITE_RNF12 else 'no'} | {fuente} |")
+        print(f"recomendacion {i}: HTTP {s} en {t:.2f} s ({fuente})")
     med, p95, mx = resumen(secuenciales)
     lineas += ["", f"Mediana {med} s · p95 {p95} s · maximo {mx} s.", "",
                "## 2. Concurrencia (peticiones simultaneas)", "",

@@ -85,7 +85,7 @@ public final class PlanningRules {
     /** Titulo del recordatorio de la sesion con el tiempo real ("Quedan 3 h 50 min", "Queda 1 hora"). */
     public static String leftTitle(Duration left) {
         String phrase = untilPhrase(left);
-        return (phrase.startsWith("1 ") ? "Queda " : "Quedan ") + phrase;
+        return (phrase.startsWith("1 ") ? "Les queda " : "Les quedan ") + phrase;
     }
 
     /** Marca el recordatorio y los anteriores de su etapa, para no mandar uno viejo despues. */

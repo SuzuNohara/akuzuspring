@@ -324,8 +324,8 @@ public class ExternalCalendarService {
         ZonedDateTime end = nexus.getEndDateTime().atZone(CDMX);
         String when = WEEKDAYS[start.getDayOfWeek().getValue() - 1] + " " + start.getDayOfMonth()
                 + " de " + start.format(HOUR) + " a " + end.format(HOUR);
-        appNotifications.notify(userId, null, NoticeTypes.SYNC_CONFLICT, "Cambió un evento en tu calendario",
-                "\"" + nexus.getTitle() + "\" cambió en tu calendario del teléfono. En Nexus sigue el " + when + ".",
+        appNotifications.notify(userId, null, NoticeTypes.SYNC_CONFLICT, "\"" + nexus.getTitle() + "\" cambió en tu teléfono",
+                "Aquí en Nexus lo dejamos el " + when + ".",
                 Map.of("eventId", String.valueOf(nexus.getId())));
     }
 

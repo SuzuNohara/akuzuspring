@@ -162,7 +162,7 @@ class PlanningServiceTest {
         assertThat(view.phase()).isEqualTo("INVITED");
         assertThat(view.role()).isEqualTo("INVITER");
         assertThat(view.inviteExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(24)));
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("INVITE"), eq("Ana te invita a planear una cita"), any());
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("INVITE"), eq("Ana quiere planear una cita contigo"), any());
     }
 
     @Test
@@ -206,7 +206,7 @@ class PlanningServiceTest {
 
         assertThat(view.phase()).isEqualTo("FILTERS");
         assertThat(view.sessionExpiresAt()).isEqualTo(NOW.plus(Duration.ofHours(12)));
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("JOINED"), eq("Sam se unió a la planeación"), any());
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("JOINED"), eq("Sam ya está aquí"), any());
     }
 
     @Test
@@ -219,8 +219,8 @@ class PlanningServiceTest {
         PlanningView view = service.current(ANA).orElseThrow();
 
         assertThat(view.status()).isEqualTo("EXPIRED");
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("EXPIRED"), eq("Sam no aceptó a tiempo"), any());
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("EXPIRED"), eq("La invitación de Ana venció"), any());
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("EXPIRED"), eq("Se pasó el tiempo de la invitación"), any());
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("EXPIRED"), eq("Se nos fue la invitación de Ana"), any());
     }
 
     @Test
@@ -246,8 +246,8 @@ class PlanningServiceTest {
         service.sweep();
         service.sweep();
 
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Recordatorio"),
-                eq("La invitación de Ana vence en 11 horas."));
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Ana te está esperando"),
+                eq("Su invitación vence en 11 horas."));
     }
 
     @Test
@@ -259,8 +259,8 @@ class PlanningServiceTest {
 
         service.sweep();
 
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("REMINDER"), eq("Quedan 3 h 50 min"), any());
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Quedan 3 h 50 min"), any());
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("REMINDER"), eq("Les quedan 3 h 50 min"), any());
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("REMINDER"), eq("Les quedan 3 h 50 min"), any());
     }
 
     // --- cierre con opcion pendiente ---------------------------------------------------------
@@ -289,10 +289,10 @@ class PlanningServiceTest {
         assertThat(view.phase()).isEqualTo("CLOSED");
         assertThat(view.leftover().option().item().title()).isEqualTo("Plan 2");
         assertThat(view.leftover().kind()).isEqualTo("MY_PROPOSAL");
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
-                eq("Sam no alcanzó a responder tu propuesta."));
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
-                eq("No alcanzaste a responder la propuesta de Ana."));
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se les fue el tiempo"),
+                eq("Sam no alcanzó a ver tu propuesta."));
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se les fue el tiempo"),
+                eq("Se te pasó la propuesta de Ana."));
     }
 
     @Test
@@ -308,8 +308,8 @@ class PlanningServiceTest {
 
         assertThat(view.leftover().option().item().title()).isEqualTo("Plan 3");
         assertThat(view.leftover().kind()).isEqualTo("MATCH");
-        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
-                eq("Coincidieron en \"Plan 3\", pero nadie la propuso."));
+        verify(notifications).notify(eq(SAM), eq(SESSION), eq("CLOSED"), eq("Se les fue el tiempo"),
+                eq("Coincidieron en \"Plan 3\", pero a nadie se le ocurrió proponerla."));
     }
 
     @Test
@@ -322,8 +322,8 @@ class PlanningServiceTest {
         PlanningView view = service.current(ANA).orElseThrow();
 
         assertThat(view.leftover()).isNull();
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se acabó el tiempo"),
-                eq("No llegaron a un acuerdo a tiempo."));
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("CLOSED"), eq("Se les fue el tiempo"),
+                eq("Esta vez no decidieron. ¿Lo intentan otro día?"));
     }
 
     @Test
@@ -453,7 +453,7 @@ class PlanningServiceTest {
         assertThat(s.getRequestId()).isEqualTo(REQUEST);
         assertThat(second.phase()).isEqualTo("OPTIONS");
         assertThat(second.relaxedFilters()).containsExactly("BUDGET");
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("OPTIONS"), eq("Ya tienen opciones"), any());
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("OPTIONS"), eq("¡Hay planes para ustedes!"), any());
     }
 
     // --- B3 ---------------------------------------------------------------------------------
@@ -525,7 +525,7 @@ class PlanningServiceTest {
         assertThat(s.getEventId()).isEqualTo(300L);
         verify(events).approveEvent(SAM, 300L);
         verify(messages).deleteBySessionId(SESSION);
-        verify(notifications).notify(eq(ANA), eq(SESSION), eq("AGREED"), eq("¡Cita confirmada!"), any());
+        verify(notifications).notify(eq(ANA), eq(SESSION), eq("AGREED"), eq("¡Tienen cita!"), any());
     }
 
     @Test
@@ -561,7 +561,7 @@ class PlanningServiceTest {
         service.sendMessage(ANA, SESSION, "  ¿Y si mejor el cine?  ");
 
         verify(messages).save(any());
-        verify(notifications).notifyGrouped(eq(SAM), eq(SESSION), eq("MESSAGES"), eq("Mensajes nuevos de Ana"),
+        verify(notifications).notifyGrouped(eq(SAM), eq(SESSION), eq("MESSAGES"), eq("Ana te escribió"),
                 eq("2 mensajes en su planeación."), any());
     }
 }

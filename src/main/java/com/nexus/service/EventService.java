@@ -120,8 +120,8 @@ public class EventService {
         try {
             if (partner != null) {
                 // [push-avisos] U4: a la campanita y como push
-                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
-                    nameOf(creator) + " quiere agregar \"" + savedEvent.getTitle() + "\" al calendario.");
+                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_PENDING, nameOf(creator) + " quiere agregar un plan",
+                    "\"" + savedEvent.getTitle() + "\" está esperando tu sí.");
                 notificationStatus = "Notificación enviada exitosamente";
                 log.info("Aviso de aprobación para usuario ID {}", partner.getId());
             }
@@ -178,6 +178,16 @@ public class EventService {
     /** Nombre que ve la pareja en los avisos: el nombre, o el apodo si no hay nombre. */
     private static String nameOf(User user) {
         return user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
+    }
+
+    /** [ux-ajustes] Nombre de la pareja de {@code userId} en el vinculo del evento ("Tu pareja" si no hay). */
+    private String partnerNameOf(Event event, Long userId) {
+        if (event.getLink() == null) {
+            return "Tu pareja";
+        }
+        User other = getPartnerUser(event.getLink(), userId);
+        String name = other == null ? null : nameOf(other);
+        return name != null ? name : "Tu pareja";
     }
 
     private User getPartnerUser(Link link, Long userId) {
@@ -250,8 +260,9 @@ public class EventService {
         // Enviar notificación al creador
         try {
             User creator = savedEvent.getCreator();
-            appNotifications.notify(creator.getId(), null, NoticeTypes.EVENT_CONFIRMED, "Evento confirmado",
-                "Tu pareja aceptó \"" + savedEvent.getTitle() + "\".");
+            appNotifications.notify(creator.getId(), null, NoticeTypes.EVENT_CONFIRMED, "¡Dijo que sí!",
+                partnerNameOf(savedEvent, creator.getId()) + " aceptó \"" + savedEvent.getTitle()
+                        + "\". Ya está en su calendario.");
         } catch (Exception e) {
             log.warn("Error enviando notificación de confirmación: {}", e.getMessage());
         }
@@ -412,8 +423,8 @@ public class EventService {
             
             try {
                 if (otherUser != null) {
-                    appNotifications.notify(otherUser.getId(), null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
-                        nameOf(user) + " cambió \"" + updatedEvent.getTitle() + "\" y necesita tu visto bueno.");
+                    appNotifications.notify(otherUser.getId(), null, NoticeTypes.EVENT_PENDING, nameOf(user) + " movió un plan",
+                        "Cambió \"" + updatedEvent.getTitle() + "\". ¿Te sigue latiendo?");
                     log.info("Aviso de edición para usuario ID {}", otherUser.getId());
                 }
             } catch (Exception e) {
@@ -453,6 +464,7 @@ public class EventService {
         User creator = event.getCreator();
         String eventTitle = event.getTitle();
         Long creatorId = creator.getId();
+        String rejectedBy = partnerNameOf(event, creatorId);
         
         // 5. Ejecutar UPDATE nativo SQL (bypass completo de JPA/Hibernate)
         log.info("Ejecutando UPDATE nativo para cambiar status a REJECTED");
@@ -480,8 +492,8 @@ public class EventService {
         
         // 8. Enviar notificación al creador
         try {
-            appNotifications.notify(creatorId, null, NoticeTypes.EVENT_REJECTED, "Evento rechazado",
-                "Tu pareja no aceptó \"" + eventTitle + "\".");
+            appNotifications.notify(creatorId, null, NoticeTypes.EVENT_REJECTED, "Esta vez no se pudo",
+                rejectedBy + " no aceptó \"" + eventTitle + "\". Pueden buscar otro momento.");
             log.info("Aviso de rechazo para usuario ID {}", creatorId);
         } catch (Exception e) {
             log.warn("Error enviando notificación de rechazo: {}", e.getMessage());
@@ -526,8 +538,8 @@ public class EventService {
         // 6. Notificar a la pareja
         try {
             if (partner != null) {
-                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_DELETED, "Evento eliminado",
-                    deletedBy + " quitó \"" + event.getTitle() + "\" del calendario.");
+                appNotifications.notify(partner.getId(), null, NoticeTypes.EVENT_DELETED, "Un plan menos en el calendario",
+                    deletedBy + " quitó \"" + event.getTitle() + "\".");
                 log.info("Aviso de eliminación para usuario ID {}", partner.getId());
             }
         } catch (Exception e) {

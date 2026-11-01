@@ -108,8 +108,8 @@ class EventServiceTest {
         assertThat(saved.getValue().getStatus()).isEqualTo(EventStatus.PENDING);
         assertThat(saved.getValue().getCreatorApproved()).isTrue();
         assertThat(saved.getValue().getPartnerApproved()).isFalse();
-        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
-                "Ana quiere agregar \"Cena\" al calendario.");
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Ana quiere agregar un plan",
+                "\"Cena\" está esperando tu sí.");
     }
 
     @Test
@@ -171,8 +171,8 @@ class EventServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(EventStatus.CONFIRMED);
         assertThat(pending.getPartnerApproved()).isTrue();
-        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_CONFIRMED, "Evento confirmado",
-                "Tu pareja aceptó \"Cena\".");
+        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_CONFIRMED, "¡Dijo que sí!",
+                "Luis aceptó \"Cena\". Ya está en su calendario.");
     }
 
     @Test
@@ -191,8 +191,8 @@ class EventServiceTest {
         assertThat(confirmed.getStatus()).isEqualTo(EventStatus.PENDING);
         assertThat(confirmed.getCreatorApproved()).isTrue();
         assertThat(confirmed.getPartnerApproved()).isFalse();
-        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Evento por aprobar",
-                "Ana cambió \"Cena\" y necesita tu visto bueno.");
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_PENDING, "Ana movió un plan",
+                "Cambió \"Cena\". ¿Te sigue latiendo?");
     }
 
     @Test
@@ -260,8 +260,8 @@ class EventServiceTest {
 
         service.rejectEvent(PARTNER_ID, EVENT_ID);
 
-        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_REJECTED, "Evento rechazado",
-                "Tu pareja no aceptó \"Cena\".");
+        verify(appNotifications).notify(CREATOR_ID, null, NoticeTypes.EVENT_REJECTED, "Esta vez no se pudo",
+                "Luis no aceptó \"Cena\". Pueden buscar otro momento.");
     }
 
     @Test
@@ -273,7 +273,7 @@ class EventServiceTest {
 
         service.deleteEvent(EVENT_ID, CREATOR_ID);
 
-        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_DELETED, "Evento eliminado",
-                "Ana quitó \"Cena\" del calendario.");
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_DELETED, "Un plan menos en el calendario",
+                "Ana quitó \"Cena\".");
     }
 }

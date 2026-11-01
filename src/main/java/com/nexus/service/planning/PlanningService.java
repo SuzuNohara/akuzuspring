@@ -152,7 +152,7 @@ public class PlanningService {
                 .slotEnd(slot == null ? null : slot.slotEnd())
                 .build());
         notifications.notify(partnerId, s.getId(), T_INVITE,
-                nameOf(userId) + " te invita a planear una cita", "Únete para planear juntos.");
+                nameOf(userId) + " quiere planear una cita contigo", "Entra y armen algo juntos.");
         return view(s, userId, Set.of());
     }
 
@@ -190,7 +190,7 @@ public class PlanningService {
         s.setScope(Scope.ANY);
         s.setMaxCostMxn(DEFAULT_BUDGET);
         notifications.notify(s.getInviterId(), s.getId(), T_JOINED,
-                nameOf(userId) + " se unió a la planeación", "Ya pueden planear juntos.");
+                nameOf(userId) + " ya está aquí", "Elijan sus filtros y vean qué sale.");
         return view(s, userId, Set.of());
     }
 
@@ -204,7 +204,7 @@ public class PlanningService {
         s.setStatus(PlanningStatus.CANCELLED);
         s.setClosedAt(clock.instant());
         notifications.notify(s.getPartnerId(), s.getId(), T_CANCELLED,
-                nameOf(userId) + " canceló la invitación", "Ya no está disponible.");
+                nameOf(userId) + " canceló la invitación", "Será en otra ocasión.");
         return view(s, userId, Set.of());
     }
 
@@ -238,11 +238,11 @@ public class PlanningService {
         Long other = s.otherThan(userId);
         if (!s.isReady(other)) {
             notifications.notify(other, s.getId(), T_READY,
-                    nameOf(userId) + " terminó de elegir los filtros", "Toca \"Listo\" para buscar opciones juntos.");
+                    nameOf(userId) + " ya eligió sus filtros", "Toca \"Listo\" y busquen opciones juntos.");
             return view(s, userId, Set.of());
         }
         RecommendationBatch batch = search(s);
-        notifications.notify(other, s.getId(), T_OPTIONS, "Ya tienen opciones", "Nexus encontró planes para los dos.");
+        notifications.notify(other, s.getId(), T_OPTIONS, "¡Hay planes para ustedes!", "Nexus encontró opciones para los dos.");
         return view(s, userId, batch.relaxedFilters());
     }
 
@@ -281,7 +281,7 @@ public class PlanningService {
             unseen(s).stream().findFirst().ifPresent(next -> next.setShown(true));
         } else if (vote == Vote.LIKE && theirs.equals(Optional.of(Vote.LIKE)) && !before.equals(Optional.of(Vote.LIKE))) {
             notifications.notify(other, s.getId(), T_MATCH, "¡Coinciden!",
-                    "A los dos les gusta \"" + rec.getActivity().getTitle() + "\".");
+                    "A los dos les late \"" + rec.getActivity().getTitle() + "\".");
         }
         return view(s, userId, Set.of());
     }
@@ -309,8 +309,8 @@ public class PlanningService {
         Recommendation rec = visibleRecommendation(s, recommendationId);
         s.setProposalRecommendationId(rec.getId());
         s.setProposedById(userId);
-        notifications.notify(s.otherThan(userId), s.getId(), T_PROPOSAL, nameOf(userId) + " te propuso una cita",
-                "\"" + rec.getActivity().getTitle() + "\", " + dayAndTime(rec.getRequest().getSlotStart()) + ".");
+        notifications.notify(s.otherThan(userId), s.getId(), T_PROPOSAL, nameOf(userId) + " te propone una cita",
+                "\"" + rec.getActivity().getTitle() + "\", " + dayAndTime(rec.getRequest().getSlotStart()) + ". ¿Va?");
         return view(s, userId, Set.of());
     }
 
@@ -336,7 +336,7 @@ public class PlanningService {
         Long proposer = s.getProposedById();
         clearProposal(s);
         notifications.notify(proposer, s.getId(), T_DECLINED,
-                nameOf(userId) + " quiere seguir buscando", "Pueden proponer otra opción.");
+                nameOf(userId) + " prefiere otra opción", "Sigan buscando: algo mejor viene.");
         return view(s, userId, Set.of());
     }
 
@@ -360,8 +360,8 @@ public class PlanningService {
         s.setClosedAt(clock.instant());
         s.setEventId(eventId);
         messages.deleteBySessionId(s.getId());
-        notifications.notify(s.getProposedById(), s.getId(), T_AGREED, "¡Cita confirmada!",
-                nameOf(userId) + " aceptó tu propuesta para el " + dayOf(request.getSlotStart()) + ".");
+        notifications.notify(s.getProposedById(), s.getId(), T_AGREED, "¡Tienen cita!",
+                nameOf(userId) + " dijo que sí para el " + dayOf(request.getSlotStart()) + ".");
         log.info("Planeacion {}: acuerdo, evento {}", s.getId(), eventId);
         return view(s, userId, Set.of());
     }
@@ -395,7 +395,7 @@ public class PlanningService {
         messages.save(PlanningMessage.builder().sessionId(s.getId()).senderId(userId).body(text).createdAt(now).build());
         Long other = s.otherThan(userId);
         long unread = messages.countBySessionIdAndSenderIdAndCreatedAtAfter(s.getId(), userId, chatSeenOrEpoch(s, other));
-        notifications.notifyGrouped(other, s.getId(), T_MESSAGES, "Mensajes nuevos de " + nameOf(userId),
+        notifications.notifyGrouped(other, s.getId(), T_MESSAGES, nameOf(userId) + " te escribió",
                 unread + (unread == 1 ? " mensaje" : " mensajes") + " en su planeación.", MESSAGE_GROUP);
         return messages(userId, sessionId);
     }
@@ -422,14 +422,14 @@ public class PlanningService {
     private void remind(PlanningSession s, PlanningRules.Reminder r) {
         Instant now = clock.instant();
         switch (r) {
-            case INVITE_12H, INVITE_1H -> notifications.notify(s.getPartnerId(), s.getId(), T_REMINDER, "Recordatorio",
-                    "La invitación de " + nameOf(s.getInviterId()) + " vence en "
+            case INVITE_12H, INVITE_1H -> notifications.notify(s.getPartnerId(), s.getId(), T_REMINDER, nameOf(s.getInviterId()) + " te está esperando",
+                    "Su invitación vence en "
                             + PlanningRules.untilPhrase(Duration.between(now, s.getInviteExpiresAt())) + ".");
             case SESSION_6H, SESSION_1H, SESSION_15M -> {
                 String title = PlanningRules.leftTitle(Duration.between(now, s.getSessionExpiresAt()));
                 for (Long member : List.of(s.getInviterId(), s.getPartnerId())) {
                     notifications.notify(member, s.getId(), T_REMINDER, title,
-                            "Decidan su cita antes de que se cierre la sesión.");
+                            "Elijan su cita antes de que se acabe el tiempo.");
                 }
             }
         }
@@ -441,9 +441,10 @@ public class PlanningService {
             s.setStatus(PlanningStatus.EXPIRED);
             s.setClosedAt(s.getInviteExpiresAt());
             notifications.notify(s.getInviterId(), s.getId(), T_EXPIRED,
-                    nameOf(s.getPartnerId()) + " no aceptó a tiempo", "La invitación venció.");
+                    "Se pasó el tiempo de la invitación",
+                    nameOf(s.getPartnerId()) + " no alcanzó a entrar. Inténtenlo otro día.");
             notifications.notify(s.getPartnerId(), s.getId(), T_EXPIRED,
-                    "La invitación de " + nameOf(s.getInviterId()) + " venció", "Pueden planear otra cita cuando quieran.");
+                    "Se nos fue la invitación de " + nameOf(s.getInviterId()), "Pueden planear otra cita cuando quieran.");
         } else if (s.getStatus() == PlanningStatus.ACTIVE && !now.isBefore(s.getSessionExpiresAt())) {
             s.setStatus(PlanningStatus.CLOSED);
             s.setClosedAt(s.getSessionExpiresAt());
@@ -451,7 +452,7 @@ public class PlanningService {
             locations.clear(s.getId());
             Optional<Recommendation> leftover = leftoverOf(s);
             for (Long member : List.of(s.getInviterId(), s.getPartnerId())) {
-                notifications.notify(member, s.getId(), T_CLOSED, "Se acabó el tiempo", closingBody(s, member, leftover));
+                notifications.notify(member, s.getId(), T_CLOSED, "Se les fue el tiempo", closingBody(s, member, leftover));
             }
         }
         return s;
@@ -460,14 +461,14 @@ public class PlanningService {
     /** Por que termino, dicho a cada quien: una propuesta sin respuesta no es "no llegaron a un acuerdo". */
     private String closingBody(PlanningSession s, Long member, Optional<Recommendation> leftover) {
         if (leftover.isEmpty()) {
-            return "No llegaron a un acuerdo a tiempo.";
+            return "Esta vez no decidieron. ¿Lo intentan otro día?";
         }
         if (s.getProposedById() != null) {
             return member.equals(s.getProposedById())
-                    ? nameOf(s.otherThan(member)) + " no alcanzó a responder tu propuesta."
-                    : "No alcanzaste a responder la propuesta de " + nameOf(s.getProposedById()) + ".";
+                    ? nameOf(s.otherThan(member)) + " no alcanzó a ver tu propuesta."
+                    : "Se te pasó la propuesta de " + nameOf(s.getProposedById()) + ".";
         }
-        return "Coincidieron en \"" + leftover.get().getActivity().getTitle() + "\", pero nadie la propuso.";
+        return "Coincidieron en \"" + leftover.get().getActivity().getTitle() + "\", pero a nadie se le ocurrió proponerla.";
     }
 
     /**

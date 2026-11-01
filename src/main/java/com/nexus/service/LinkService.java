@@ -155,8 +155,8 @@ public class LinkService {
         // [push-avisos] U5: avisar al generador del código (campanita y push)
         User codeGenerator = linkCode.getGeneratedByUser();
         String partnerName = user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
-        appNotifications.notify(codeGenerator.getId(), null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están vinculados!",
-                partnerName + " se vinculó contigo.", Map.of("partnerName", partnerName));
+        appNotifications.notify(codeGenerator.getId(), null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están juntos en Nexus!",
+                partnerName + " se vinculó contigo. Empiecen a planear.", Map.of("partnerName", partnerName));
         
         // Retornar información del vínculo establecido
         User partner = linkCode.getGeneratedByUser();

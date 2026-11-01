@@ -117,8 +117,8 @@ class ExternalCalendarConflictTest {
 
         assertThat(conflicts).containsExactly("Cena");
         verify(appNotifications).notify(eq(ME), eq(null), eq(NoticeTypes.SYNC_CONFLICT),
-                eq("Cambió un evento en tu calendario"),
-                eq("\"Cena\" cambió en tu calendario del teléfono. En Nexus sigue el sábado 31 de 20:00 a 22:00."),
+                eq("\"Cena\" cambió en tu teléfono"),
+                eq("Aquí en Nexus lo dejamos el sábado 31 de 20:00 a 22:00."),
                 eq(Map.of("eventId", "21")));
     }
 

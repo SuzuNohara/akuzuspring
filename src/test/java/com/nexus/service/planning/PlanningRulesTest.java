@@ -62,8 +62,8 @@ class PlanningRulesTest {
         assertThat(PlanningRules.untilPhrase(Duration.ofHours(1))).isEqualTo("1 hora");
         assertThat(PlanningRules.untilPhrase(Duration.ofMinutes(15))).isEqualTo("15 minutos");
         assertThat(PlanningRules.untilPhrase(Duration.ofSeconds(50))).isEqualTo("1 minuto");
-        assertThat(PlanningRules.leftTitle(Duration.ofMinutes(230))).isEqualTo("Quedan 3 h 50 min");
-        assertThat(PlanningRules.leftTitle(Duration.ofHours(1))).isEqualTo("Queda 1 hora");
+        assertThat(PlanningRules.leftTitle(Duration.ofMinutes(230))).isEqualTo("Les quedan 3 h 50 min");
+        assertThat(PlanningRules.leftTitle(Duration.ofHours(1))).isEqualTo("Les queda 1 hora");
     }
 
     @Test

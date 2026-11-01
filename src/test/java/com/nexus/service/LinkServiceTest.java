@@ -168,8 +168,8 @@ class LinkServiceTest {
         assertThat(saved.getValue().getPartnerUser()).isSameAs(partner);
         assertThat(code.getIsUsed()).isTrue();
         assertThat(response.isHasActiveLink()).isTrue();
-        verify(appNotifications).notify(GENERATOR_ID, null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están vinculados!",
-                "Luis se vinculó contigo.", Map.of("partnerName", "Luis"));
+        verify(appNotifications).notify(GENERATOR_ID, null, NoticeTypes.LINK_ESTABLISHED, "¡Ya están juntos en Nexus!",
+                "Luis se vinculó contigo. Empiecen a planear.", Map.of("partnerName", "Luis"));
     }
 
     @Test

@@ -4,9 +4,11 @@ import com.nexus.dto.planning.NotificationList;
 import com.nexus.security.AuthenticatedUser;
 import com.nexus.security.OwnershipGuard;
 import com.nexus.service.AppNotificationService;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,5 +34,13 @@ public class AppNotificationController {
         OwnershipGuard.requireSelf(me, userId);
         service.markAllRead(userId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** [ux-ajustes] D8 - "Limpiar": borra los avisos ya leidos. */
+    @DeleteMapping("/read")
+    public ResponseEntity<Map<String, Integer>> clearRead(@PathVariable Long userId,
+            @AuthenticationPrincipal AuthenticatedUser me) {
+        OwnershipGuard.requireSelf(me, userId);
+        return ResponseEntity.ok(Map.of("removed", service.clearRead(userId)));
     }
 }

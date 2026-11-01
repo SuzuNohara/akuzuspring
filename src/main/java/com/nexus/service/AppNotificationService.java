@@ -10,8 +10,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
  * recordatorios, eventos y vinculo). La app los muestra en Notificaciones y cada aviso nuevo sale
  * ademas como push al confirmar la transaccion ([push-avisos]).
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AppNotificationService {
@@ -31,6 +36,10 @@ public class AppNotificationService {
     private final AppNotificationRepository repository;
     private final Clock clock;
     private final ApplicationEventPublisher events;
+
+    /** [ux-ajustes] D8 - Dias que se guardan los avisos ya leidos. */
+    @Value("${nexus.notices.keep-days:30}")
+    private int keepDays = 30;
 
     @Transactional
     public void notify(Long userId, Long sessionId, String type, String title, String body) {
@@ -102,5 +111,26 @@ public class AppNotificationService {
         return repository.findTop2ByUserIdAndSessionIdAndTypeInOrderByCreatedAtDesc(userId, sessionId, types).stream()
                 .map(AppNotification::getBody)
                 .toList();
+    }
+
+    /** [ux-ajustes] D2 - El ultimo aviso de un tipo que recibio la persona desde {@code since}. */
+    @Transactional(readOnly = true)
+    public Optional<AppNotification> lastOf(Long userId, String type, Instant since) {
+        return repository.findFirstByUserIdAndTypeAndCreatedAtAfterOrderByCreatedAtDesc(userId, type, since);
+    }
+
+    /** [ux-ajustes] D8 - "Limpiar" en la campanita: borra los avisos leidos; devuelve cuantos. */
+    @Transactional
+    public int clearRead(Long userId) {
+        return repository.deleteReadByUserId(userId);
+    }
+
+    /** [ux-ajustes] D8 - Cada dia borra los avisos leidos de hace mas de {@code keepDays} dias. */
+    @Scheduled(cron = "${nexus.notices.cleanup-cron:0 30 3 * * *}", zone = "America/Mexico_City")
+    @Transactional
+    public int purgeOldRead() {
+        int removed = repository.deleteReadCreatedBefore(clock.instant().minus(Duration.ofDays(keepDays)));
+        log.info("Avisos leidos de mas de {} dias borrados: {}", keepDays, removed);
+        return removed;
     }
 }

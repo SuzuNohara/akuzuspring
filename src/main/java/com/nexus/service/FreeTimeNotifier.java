@@ -6,6 +6,8 @@ import com.nexus.entity.Link;
 import com.nexus.repository.LinkRepository;
 import com.nexus.service.push.NoticeTypes;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -71,8 +73,15 @@ public class FreeTimeNotifier {
         FreeTimeProposals.Label label = FreeTimeProposals.label(summary.get().best(), now.toLocalDate());
         String title = "Esta semana tienen tiempo juntos";
         String body = sentenceStart(label.when()) + " tienen " + label.length() + ". ¿Planeamos algo?";
+        // [ux-ajustes] D2: no repetir el mismo aviso que ya recibio esa semana.
+        Instant weekAgo = clock.instant().minus(Duration.ofDays(7));
         for (Long member : List.of(a, b)) {
-            notifications.notify(member, null, NoticeTypes.FREE_TIME, title, body, Map.of("freeTogether", "1"));
+            boolean repeated = notifications.lastOf(member, NoticeTypes.FREE_TIME, weekAgo)
+                    .filter(last -> title.equals(last.getTitle()) && body.equals(last.getBody()))
+                    .isPresent();
+            if (!repeated) {
+                notifications.notify(member, null, NoticeTypes.FREE_TIME, title, body, Map.of("freeTogether", "1"));
+            }
         }
     }
 

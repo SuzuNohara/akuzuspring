@@ -147,4 +147,24 @@ class FreeTimeNotifierTest {
         verifyNoInteractions(links, availability, notifications);
         verify(availability, never()).findMutualAvailability(anyLong(), anyLong(), anyInt());
     }
+
+    @Test
+    @DisplayName("[ux-ajustes] D2: si el ultimo aviso de la semana es igual, no se repite; si cambia, si llega")
+    void sameNoticeOfTheWeekIsNotRepeated() {
+        given(links.findAllActive()).willReturn(List.of(link(1, 4, 9)));
+        given(availability.findMutualAvailability(4L, 9L, 7)).willReturn(mutual(day("2026-11-03", "17:00-19:00")));
+        Instant weekAgo = MONDAY_9.minus(java.time.Duration.ofDays(7));
+        given(notifications.lastOf(4L, NoticeTypes.FREE_TIME, weekAgo)).willReturn(Optional.of(
+                com.nexus.entity.AppNotification.builder().title("Esta semana tienen tiempo juntos")
+                        .body("Mañana en la tarde tienen 2 h libres. ¿Planeamos algo?").build()));
+        given(notifications.lastOf(9L, NoticeTypes.FREE_TIME, weekAgo)).willReturn(Optional.of(
+                com.nexus.entity.AppNotification.builder().title("Esta semana tienen tiempo juntos")
+                        .body("El sábado en la tarde tienen 6 h libres. ¿Planeamos algo?").build()));
+
+        notifier(true).weekly();
+
+        verify(notifications, never()).notify(eq(4L), any(), anyString(), anyString(), anyString(), any());
+        verify(notifications).notify(eq(9L), eq(null), eq(NoticeTypes.FREE_TIME), anyString(),
+                eq("Mañana en la tarde tienen 2 h libres. ¿Planeamos algo?"), any());
+    }
 }

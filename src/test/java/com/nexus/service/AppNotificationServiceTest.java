@@ -98,4 +98,33 @@ class AppNotificationServiceTest {
         assertThat(unread.getReadAt()).isEqualTo(NOW);
         verify(repository, never()).delete(any());
     }
+
+    @Test
+    @DisplayName("[ux-ajustes] D8: limpiar borra solo los avisos leidos de esa persona")
+    void clearReadDeletesOnlyThatPersonsReadNotices() {
+        when(repository.deleteReadByUserId(4L)).thenReturn(8);
+
+        assertThat(service.clearRead(4L)).isEqualTo(8);
+        verify(repository).deleteReadByUserId(4L);
+    }
+
+    @Test
+    @DisplayName("[ux-ajustes] D8: la tarea diaria borra los leidos de hace mas de 30 dias")
+    void purgeDeletesReadNoticesOlderThan30Days() {
+        when(repository.deleteReadCreatedBefore(NOW.minus(Duration.ofDays(30)))).thenReturn(3);
+
+        assertThat(service.purgeOldRead()).isEqualTo(3);
+        verify(repository).deleteReadCreatedBefore(NOW.minus(Duration.ofDays(30)));
+    }
+
+    @Test
+    @DisplayName("[ux-ajustes] D2: el ultimo aviso de un tipo desde una fecha")
+    void lastOfAType() {
+        AppNotification last = AppNotification.builder().userId(4L).type("FREE_TIME").title("t").body("b")
+                .createdAt(NOW.minus(Duration.ofDays(2))).build();
+        when(repository.findFirstByUserIdAndTypeAndCreatedAtAfterOrderByCreatedAtDesc(4L, "FREE_TIME",
+                NOW.minus(Duration.ofDays(7)))).thenReturn(Optional.of(last));
+
+        assertThat(service.lastOf(4L, "FREE_TIME", NOW.minus(Duration.ofDays(7)))).contains(last);
+    }
 }

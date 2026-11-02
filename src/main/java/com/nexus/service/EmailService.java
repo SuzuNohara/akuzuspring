@@ -28,7 +28,7 @@ public class EmailService {
     @Value("${app.logo.url:}")
     private String appLogoUrl;
 
-    private static final String IGNORE_NOTE = "Si no solicitaste este código, puedes ignorar este mensaje sin problema.";
+    private static final String IGNORE_NOTE = "Si no solicitaste este código, puedes ignorar este mensaje.";
 
     /**
      * Envía un código de verificación de email (RN-02: validez 15 minutos)

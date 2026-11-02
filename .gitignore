@@ -44,3 +44,7 @@ application-prod.properties
 # Firebase credentials
 firebase-service-account.json
 src/main/resources/firebase-service-account.json
+
+# Respaldos de la base (traen datos de cuentas)
+scripts/respaldo-*.sql
+scripts/__pycache__/

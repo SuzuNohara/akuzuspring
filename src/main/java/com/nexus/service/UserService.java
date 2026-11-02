@@ -54,7 +54,7 @@ public class UserService {
         // Verificar que el email no esté en uso
         // Se compara como se guarda (minusculas): "Ana@x.com" y "ana@x.com" son el mismo correo.
         if (userRepository.existsByEmail(request.getEmail().toLowerCase().trim())) {
-            throw new BadRequestException("El email ya está registrado");
+            throw new BadRequestException("Este correo ya tiene una cuenta registrada.");
         }
         
         // Generar link code único
@@ -107,37 +107,37 @@ public class UserService {
             .linkCode(user.getLinkCode())
             .emailConfirmed(user.getEmailConfirmed())
             .createdAt(user.getCreatedAt())
-            .message("Registro exitoso. Por favor verifica tu email.")
+            .message("Cuenta creada. Revisa tu correo para confirmarla.")
             .build();
     }
     
     private void validateRegistrationRequest(RegisterRequest request) {
         // Validar que las contraseñas coincidan
         if (!request.getPassword().equals(request.getConfirmPassword())) {
-            throw new BadRequestException("Las contraseñas no coinciden");
+            throw new BadRequestException("Las contraseñas no coinciden.");
         }
         
         // Validar edad mínima (18 años) RN-23
         LocalDate now = LocalDate.now();
         Period age = Period.between(request.getBirthDate(), now);
         if (age.getYears() < 18) {
-            throw new BadRequestException("Debes tener al menos 18 años para registrarte");
+            throw new BadRequestException("Nexus es para mayores de 18 años.");
         }
         
         // Validar que la fecha de nacimiento no sea futura
         if (request.getBirthDate().isAfter(now)) {
-            throw new BadRequestException("La fecha de nacimiento no puede ser en el futuro");
+            throw new BadRequestException("Elige una fecha de nacimiento que ya haya pasado.");
         }
         // Validar formato de email (RFC 5322 simplificado) RN-24
         String emailRegex = "^(?=.{1,64}@)[A-Za-z0-9_+.-]+(\\.[A-Za-z0-9_+.-]+)*@[^-][A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*(\\.[A-Za-z]{2,})$";
         if (!Pattern.compile(emailRegex).matcher(request.getEmail()).matches()) {
-            throw new BadRequestException("El formato del email no es válido (RFC 5322)");
+            throw new BadRequestException("Ingresa un correo electrónico válido.");
         }
 
         // Validar política de contraseña segura RN-01 (ya anotaciones, reforzamos special char)
         String passwordPolicy = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-\\[\\]{};':\\\"\\\\|,.<>/?]).{8,}$";
         if (!Pattern.compile(passwordPolicy).matcher(request.getPassword()).matches()) {
-            throw new BadRequestException("La contraseña no cumple la política de seguridad");
+            throw new BadRequestException("Tu contraseña necesita al menos 8 caracteres, con mayúscula, minúscula, número y símbolo.");
         }
 
         // Términos aceptados (simulado) RN flujo paso 4
@@ -205,21 +205,21 @@ public class UserService {
         // Buscar token de verificación
         VerificationToken token = verificationTokenRepository
             .findLatestValidToken(user.getId(), VerificationToken.TokenPurpose.EMAIL_CONFIRM, Instant.now())
-            .orElseThrow(() -> new BadRequestException("Código de verificación no válido o expirado"));
+            .orElseThrow(() -> new BadRequestException("Este código ya venció. Solicita uno nuevo."));
         
         // Validar el código
         if (!token.getToken().equals(code)) {
-            throw new BadRequestException("Código de verificación incorrecto");
+            throw new BadRequestException("El código no coincide. Revísalo en tu correo.");
         }
         
         // Verificar expiración (RN-02: 15 minutos)
         if (token.isExpired()) {
-            throw new BadRequestException("El código de verificación ha expirado. Solicita uno nuevo.");
+            throw new BadRequestException("Este código ya venció. Solicita uno nuevo.");
         }
         
         // Verificar que no haya sido usado
         if (token.isConsumed()) {
-            throw new BadRequestException("Este código ya ha sido utilizado");
+            throw new BadRequestException("Este código ya fue utilizado. Solicita uno nuevo.");
         }
         
         // Marcar token como consumido
@@ -291,11 +291,11 @@ public class UserService {
         
         // Buscar usuario por email (RN-24 ya validado por @Email en DTO)
         User user = userRepository.findByEmail(email.toLowerCase().trim())
-            .orElseThrow(() -> new BadRequestException("Si el correo está registrado, recibirás un código de recuperación"));
+            .orElseThrow(() -> new BadRequestException("Si el correo está registrado, te enviamos un código. Revisa también la carpeta de spam."));
         
         // Verificar que la cuenta esté activa
         if (!user.getEmailConfirmed()) {
-            throw new BadRequestException("Debes verificar tu email antes de recuperar la contraseña");
+            throw new BadRequestException("Primero confirma tu correo para poder restablecer la contraseña.");
         }
         
         // Invalidar tokens anteriores de reset de contraseña no consumidos
@@ -355,7 +355,7 @@ public class UserService {
             .max((t1, t2) -> t1.getCreatedAt().compareTo(t2.getCreatedAt()));
         
         if (!tokenOpt.isPresent()) {
-            throw new BadRequestException("No se encontró un código de recuperación activo");
+            throw new BadRequestException("Este código ya venció. Solicita uno nuevo.");
         }
         
         VerificationToken token = tokenOpt.get();
@@ -396,12 +396,12 @@ public class UserService {
         
         // Validar el código (solo si no está expirado)
         if (!token.getToken().equals(code)) {
-            throw new BadRequestException("Código de recuperación incorrecto");
+            throw new BadRequestException("El código no coincide. Revísalo en tu correo.");
         }
         
         // Verificar que no haya sido usado
         if (token.isConsumed()) {
-            throw new BadRequestException("Este código ya ha sido utilizado");
+            throw new BadRequestException("Este código ya fue utilizado. Solicita uno nuevo.");
         }
         
         log.info("Código de recuperación verificado exitosamente para: {}", email);
@@ -419,7 +419,7 @@ public class UserService {
         
         // Validar que las contraseñas coincidan
         if (!newPassword.equals(confirmPassword)) {
-            throw new BadRequestException("Las contraseñas no coinciden");
+            throw new BadRequestException("Las contraseñas no coinciden.");
         }
         
         // Buscar usuario
@@ -429,21 +429,21 @@ public class UserService {
         // Buscar token de recuperación válido (RN-04)
         VerificationToken token = verificationTokenRepository
             .findLatestValidToken(user.getId(), VerificationToken.TokenPurpose.PASSWORD_RESET, Instant.now())
-            .orElseThrow(() -> new BadRequestException("Código de recuperación no válido o expirado"));
+            .orElseThrow(() -> new BadRequestException("Este código ya venció. Solicita uno nuevo."));
         
         // Validar el código
         if (!token.getToken().equals(code)) {
-            throw new BadRequestException("Código de recuperación incorrecto");
+            throw new BadRequestException("El código no coincide. Revísalo en tu correo.");
         }
         
         // Verificar expiración (RN-04: 1 hora)
         if (token.isExpired()) {
-            throw new BadRequestException("El código de recuperación ha expirado. Solicita uno nuevo.");
+            throw new BadRequestException("Este código ya venció. Solicita uno nuevo.");
         }
         
         // Verificar que no haya sido usado
         if (token.isConsumed()) {
-            throw new BadRequestException("Este código ya ha sido utilizado");
+            throw new BadRequestException("Este código ya fue utilizado. Solicita uno nuevo.");
         }
         
         // Actualizar contraseña (RN-01 ya validada en DTO)
@@ -469,14 +469,14 @@ public class UserService {
         
         // Buscar usuario por email (RN-24 ya validado en DTO)
         User user = userRepository.findByEmail(email.toLowerCase().trim())
-            .orElseThrow(() -> new BadRequestException("Credenciales incorrectas"));
+            .orElseThrow(() -> new BadRequestException("El correo o la contraseña no coinciden. Revisa tus datos e inténtalo de nuevo."));
         
         // FA05: Verificar si la cuenta está bloqueada (RN-03)
         if (user.getAccountLockedUntil() != null && user.getAccountLockedUntil().isAfter(Instant.now())) {
             long minutesRemaining = java.time.Duration.between(Instant.now(), user.getAccountLockedUntil()).toMinutes();
             throw new BadRequestException(
-                "Tu cuenta está bloqueada temporalmente por seguridad. " +
-                "Intenta nuevamente en " + (minutesRemaining + 1) + " minutos."
+                "El acceso sigue en pausa por seguridad. " +
+                "Puedes intentarlo en " + (minutesRemaining + 1) + " minutos."
             );
         }
         
@@ -502,13 +502,13 @@ public class UserService {
                 userRepository.save(user);
                 log.warn("Cuenta bloqueada por intentos fallidos: {}", email);
                 throw new BadRequestException(
-                    "Has alcanzado el límite de intentos. Tu cuenta ha sido bloqueada por 15 minutos por seguridad."
+                    "Muchos intentos seguidos. Por seguridad, pausamos el acceso por 15 minutos."
                 );
             }
             
             userRepository.save(user);
             log.warn("Intento fallido de inicio de sesión para: {} (intento {} de 3)", email, user.getFailedLoginAttempts());
-            throw new BadRequestException("Credenciales incorrectas");
+            throw new BadRequestException("El correo o la contraseña no coinciden. Revisa tus datos e inténtalo de nuevo.");
         }
         
         // Login exitoso: Restablecer contador de intentos fallidos (RN-03)

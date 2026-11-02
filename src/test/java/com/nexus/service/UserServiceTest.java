@@ -108,7 +108,8 @@ class UserServiceTest {
                 validRegistration().birthDate(LocalDate.now().minusYears(17)).build();
 
         assertThatThrownBy(() -> service.registerUser(request))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Nexus es para mayores de 18 años.");
         verify(userRepository, never()).save(any(User.class));
     }
 
@@ -128,7 +129,8 @@ class UserServiceTest {
         given(userRepository.existsByEmail(EMAIL)).willReturn(true);
 
         assertThatThrownBy(() -> service.registerUser(validRegistration().build()))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Este correo ya tiene una cuenta registrada.");
         verify(userRepository, never()).save(any(User.class));
     }
 
@@ -152,7 +154,8 @@ class UserServiceTest {
 
         Instant before = Instant.now();
         assertThatThrownBy(() -> service.login(EMAIL, "incorrecta"))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Muchos intentos seguidos. Por seguridad, pausamos el acceso por 15 minutos.");
 
         assertThat(user.getFailedLoginAttempts()).isEqualTo(3);
         assertThat(user.getAccountLockedUntil())
@@ -167,7 +170,8 @@ class UserServiceTest {
         given(passwordEncoder.matches("incorrecta", "HASH")).willReturn(false);
 
         assertThatThrownBy(() -> service.login(EMAIL, "incorrecta"))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("El correo o la contraseña no coinciden. Revisa tus datos e inténtalo de nuevo.");
 
         assertThat(user.getFailedLoginAttempts()).isEqualTo(1);
         assertThat(user.getAccountLockedUntil()).isNull();
@@ -182,7 +186,8 @@ class UserServiceTest {
         given(passwordEncoder.matches(VALID_PASSWORD, "HASH")).willReturn(true);
 
         assertThatThrownBy(() -> service.login(EMAIL, VALID_PASSWORD))
-                .isInstanceOf(BadRequestException.class);
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageStartingWith("El acceso sigue en pausa por seguridad. Puedes intentarlo en");
         verify(passwordEncoder, never()).matches(any(), any());
     }
 

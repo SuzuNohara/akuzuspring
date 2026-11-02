@@ -2,6 +2,7 @@ package com.nexus.service;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import java.time.Year;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,232 +15,157 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 @Slf4j
 public class EmailService {
-    
+
     private final JavaMailSender mailSender;
-    
+
     @Value("${spring.mail.username}")
     private String fromEmail;
-    
+
     @Value("${app.name}")
     private String appName;
-    
+
     // URL del logo para usar en los correos (opcional)
     @Value("${app.logo.url:}")
     private String appLogoUrl;
-    
+
+    private static final String IGNORE_NOTE = "Si no solicitaste este código, puedes ignorar este mensaje sin problema.";
+
     /**
      * Envía un código de verificación de email (RN-02: validez 15 minutos)
      * @param toEmail Email del destinatario
      * @param verificationCode Código de 6 dígitos
      */
     public void sendVerificationEmail(String toEmail, String verificationCode) {
-        try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            
-            helper.setFrom(fromEmail);
-            helper.setTo(toEmail);
-            helper.setSubject(appName + " - Verifica tu correo electrónico");
-            
-            String htmlContent = buildVerificationEmailHtml(verificationCode);
-            helper.setText(htmlContent, true);
-
-            // Adjuntar el logo inline si se usa un CID (mejor compatibilidad que data URIs)
-            if (appLogoUrl != null && appLogoUrl.startsWith("cid:")) {
-                String cid = appLogoUrl.substring(4);
-                try {
-                    // Intenta primero con PNG (mejor compatibilidad con clientes de email)
-                    ClassPathResource logoRes = new ClassPathResource("static/images/app-logo.png");
-                    if (logoRes.exists()) {
-                        helper.addInline(cid, logoRes, "image/png");
-                    } else {
-                        // Fallback a SVG si no existe PNG
-                        logoRes = new ClassPathResource("static/images/app-logo.svg");
-                        if (logoRes.exists()) {
-                            helper.addInline(cid, logoRes, "image/svg+xml");
-                        } else {
-                            log.warn("Logo inline no encontrado en classpath");
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.warn("No se pudo adjuntar el logo inline: {}", ex.getMessage());
-                }
-            }
-            
-            mailSender.send(message);
-            log.info("Email de verificación enviado exitosamente a: {}", toEmail);
-            
-        } catch (MessagingException e) {
-            log.error("Error al enviar email de verificación a: {}", toEmail, e);
-            throw new RuntimeException("No se pudo enviar el email de verificación", e);
-        }
+        String html = buildCodeEmailHtml(
+                "¡Te damos la bienvenida a " + appName + "!",
+                "Este es tu código de confirmación:",
+                verificationCode,
+                "15 minutos",
+                "Ingrésalo en la app para activar tu cuenta y comenzar.",
+                IGNORE_NOTE);
+        send(toEmail, "Tu código para comenzar en " + appName, html, "verificación");
     }
-    
+
     /**
      * Envía un código de recuperación de contraseña (RN-04: validez 1 hora)
      * @param toEmail Email del destinatario
      * @param resetCode Código de 6 dígitos
      */
     public void sendPasswordResetEmail(String toEmail, String resetCode) {
+        String html = buildCodeEmailHtml(
+                "Restablece tu contraseña",
+                "Recibimos una solicitud para restablecer tu contraseña. Este es tu código:",
+                resetCode,
+                "1 hora",
+                "Ingrésalo en la app para elegir una contraseña nueva.",
+                IGNORE_NOTE + " Tu contraseña no cambiará.");
+        send(toEmail, "Tu código para restablecer tu contraseña en " + appName, html, "recuperación");
+    }
+
+    private void send(String toEmail, String subject, String html, String kind) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            
             helper.setFrom(fromEmail);
             helper.setTo(toEmail);
-            helper.setSubject(appName + " - Recupera tu contraseña");
-            
-            String htmlContent = buildPasswordResetEmailHtml(resetCode);
-            helper.setText(htmlContent, true);
-            
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            attachInlineLogo(helper);
             mailSender.send(message);
-            log.info("Email de recuperación de contraseña enviado exitosamente a: {}", toEmail);
-            
+            log.info("Email de {} enviado exitosamente a: {}", kind, toEmail);
         } catch (MessagingException e) {
-            log.error("Error al enviar email de recuperación a: {}", toEmail, e);
-            throw new RuntimeException("No se pudo enviar el email de recuperación", e);
+            log.error("Error al enviar email de {} a: {}", kind, toEmail, e);
+            throw new RuntimeException("No se pudo enviar el email de " + kind, e);
         }
     }
-    
-    private String buildVerificationEmailHtml(String code) {
-        // Construir bloque de logo: si hay URL configurada, usar imagen; si no, usar emoji de festejo
-        String logoBlock = (appLogoUrl != null && !appLogoUrl.isBlank())
-            ? ("<img class='logo-img' src='" + appLogoUrl + "' alt='" + appName + " logo' />")
-            : "<div class='logo'>&#127881;</div>";
 
-        String html = "<!DOCTYPE html>" +
-            "<html>" +
-            "<head>" +
-            "<meta charset='UTF-8'>" +
-            "<meta name='viewport' content='width=device-width, initial-scale=1.0'>" +
-            "<style>" +
-            "* { margin: 0; padding: 0; box-sizing: border-box; }" +
-            "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; background: linear-gradient(135deg, #FF4F81 0%, #8A2BE2 100%); padding: 40px 20px; min-height: 100vh; }" +
-            ".email-wrapper { max-width: 600px; margin: 0 auto; }" +
-            ".email-header { text-align: center; margin-bottom: 30px; }" +
-            ".logo { font-size: 48px; margin-bottom: 10px; }" +
-            ".logo-img { height: 56px; width: auto; margin-bottom: 10px; border: 0; outline: none; text-decoration: none; }" +
-            ".app-name { color: white; font-size: 32px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }" +
-            ".email-content { background: white; border-radius: 24px; padding: 50px 40px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }" +
-            ".greeting { font-size: 28px; font-weight: bold; color: #333; margin-bottom: 20px; text-align: center; }" +
-            ".message { font-size: 16px; color: #666; text-align: center; margin-bottom: 30px; line-height: 1.8; }" +
-            ".code-section { background: linear-gradient(135deg, #FFF5F7 0%, #F3E5F5 100%); border-radius: 16px; padding: 30px; margin: 30px 0; text-align: center; }" +
-            ".code-label { font-size: 14px; color: #666; margin-bottom: 15px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; }" +
-            ".code-box { background: white; color: #FF4F81; font-size: 40px; font-weight: bold; letter-spacing: 12px; padding: 25px 30px; border-radius: 12px; margin: 0 auto; display: inline-block; box-shadow: 0 4px 20px rgba(255, 79, 129, 0.2); border: 2px solid rgba(255, 79, 129, 0.1); }" +
-            ".validity { margin-top: 20px; font-size: 14px; color: #666; }" +
-            ".validity strong { color: #FF4F81; font-weight: 600; }" +
-            ".divider { height: 1px; background: linear-gradient(90deg, transparent, #E0E0E0, transparent); margin: 30px 0; }" +
-            ".info-box { background: #F8F9FA; border-left: 4px solid #FF4F81; border-radius: 8px; padding: 20px; margin: 25px 0; }" +
-            ".info-box p { font-size: 14px; color: #555; margin: 0; line-height: 1.6; }" +
-            ".footer { margin-top: 40px; padding-top: 30px; border-top: 1px solid #E0E0E0; text-align: center; }" +
-            ".footer p { font-size: 13px; color: #999; margin: 8px 0; }" +
-            ".footer-brand { font-weight: 600; color: #FF4F81; }" +
-            "@media only screen and (max-width: 600px) { " +
-            "body { padding: 20px 10px; } " +
-            ".email-content { padding: 30px 20px; } " +
-            ".code-box { font-size: 32px; letter-spacing: 8px; padding: 20px; } " +
-            ".greeting { font-size: 24px; } " +
-            "}" +
-            "</style>" +
-            "</head>" +
-            "<body>" +
-            "<div class='email-wrapper'>" +
-            "<div class='email-header'>" +
-            logoBlock +
-            "<div class='app-name'>&#161;Bienvenido a " + appName + "!</div>" +
-            "</div>" +
-            "<div class='email-content'>" +
-            "<div class='greeting'>Tu c&oacute;digo de verificaci&oacute;n es:</div>" +
-            "<div class='code-section'>" +
-            "<div class='code-label'>C&oacute;digo de Verificaci&oacute;n</div>" +
-            "<div class='code-box'>" + code + "</div>" +
-            "<div class='validity'>Este c&oacute;digo es v&aacute;lido por <strong>15 minutos</strong></div>" +
-            "</div>" +
-            "<div class='divider'></div>" +
-            "<div class='message'>" +
-            "Ingresa este c&oacute;digo en la aplicaci&oacute;n para completar tu registro y comenzar a usar " + appName + "." +
-            "</div>" +
-            "<div class='info-box'>" +
-            "<p><strong>&#9888; Importante:</strong> Si no solicitaste este c&oacute;digo, puedes ignorar este mensaje.</p>" +
-            "</div>" +
-            "<div class='footer'>" +
-            "<p>Este es un correo autom&aacute;tico, por favor no responder.</p>" +
-            "<p class='footer-brand'>" + appName + " &copy; 2025</p>" +
-            "</div>" +
-            "</div>" +
-            "</div>" +
-            "</body>" +
-            "</html>";
-        return html;
+    // Adjuntar el logo inline si se usa un CID (mejor compatibilidad que data URIs)
+    private void attachInlineLogo(MimeMessageHelper helper) {
+        if (appLogoUrl == null || !appLogoUrl.startsWith("cid:")) {
+            return;
+        }
+        String cid = appLogoUrl.substring(4);
+        try {
+            // PNG primero (mejor compatibilidad con clientes de email); SVG si no existe
+            ClassPathResource logoRes = new ClassPathResource("static/images/app-logo.png");
+            if (logoRes.exists()) {
+                helper.addInline(cid, logoRes, "image/png");
+                return;
+            }
+            logoRes = new ClassPathResource("static/images/app-logo.svg");
+            if (logoRes.exists()) {
+                helper.addInline(cid, logoRes, "image/svg+xml");
+            } else {
+                log.warn("Logo inline no encontrado en classpath");
+            }
+        } catch (Exception ex) {
+            log.warn("No se pudo adjuntar el logo inline: {}", ex.getMessage());
+        }
     }
-    
-    private String buildPasswordResetEmailHtml(String code) {
+
+    /**
+     * Plantilla de los dos correos con código. Tablas y estilos en línea para Gmail y Outlook; el modo
+     * oscuro lo toman los clientes que leen prefers-color-scheme (Apple Mail, Outlook, Gmail web).
+     * Colores de la app (constants/colors.ts): rosa #FF4F81, rosa fuerte #D81B60, morado #8A2BE2.
+     */
+    private String buildCodeEmailHtml(String title, String intro, String code, String validity,
+                                      String instruction, String note) {
+        String logo = (appLogoUrl != null && !appLogoUrl.isBlank())
+                ? "<img src=\"" + appLogoUrl + "\" alt=\"" + appName + "\" height=\"48\" style=\"display:block;margin:0 auto 12px;height:48px;width:auto;border:0;\">"
+                : "";
         return """
             <!DOCTYPE html>
-            <html>
+            <html lang="es">
             <head>
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                        line-height: 1.6;
-                        color: #333;
-                        max-width: 600px;
-                        margin: 0 auto;
-                        padding: 20px;
-                    }
-                    .container {
-                        background: linear-gradient(135deg, #FF4F81 0%, #8A2BE2 100%);
-                        border-radius: 16px;
-                        padding: 40px;
-                        text-align: center;
-                        color: white;
-                    }
-                    .code-box {
-                        background: white;
-                        color: #FF4F81;
-                        font-size: 32px;
-                        font-weight: bold;
-                        letter-spacing: 8px;
-                        padding: 20px;
-                        border-radius: 12px;
-                        margin: 30px 0;
-                        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                    }
-                    .warning {
-                        background: rgba(255,255,255,0.2);
-                        padding: 15px;
-                        border-radius: 8px;
-                        margin-top: 20px;
-                    }
-                    .footer {
-                        margin-top: 30px;
-                        font-size: 14px;
-                        color: rgba(255,255,255,0.8);
-                    }
-                    h1 {
-                        margin: 0 0 20px 0;
-                        font-size: 28px;
-                    }
-                </style>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta name="color-scheme" content="light dark">
+            <meta name="supported-color-schemes" content="light dark">
+            <title>%1$s</title>
+            <style>
+              :root { color-scheme: light dark; supported-color-schemes: light dark; }
+              @media (prefers-color-scheme: dark) {
+                .bg { background-color: #15111C !important; }
+                .card { background-color: #1F1A29 !important; border-color: #3A3247 !important; }
+                .text { color: #F5F3F8 !important; }
+                .muted { color: #C9C3D3 !important; }
+                .code { background-color: #2A2335 !important; border-color: #4A3F5C !important; color: #FF8FAE !important; }
+                .accent { color: #FF8FAE !important; }
+                .rule { border-color: #3A3247 !important; }
+              }
+              [data-ogsc] .card { background-color: #1F1A29 !important; }
+              [data-ogsc] .text { color: #F5F3F8 !important; }
+              [data-ogsc] .muted { color: #C9C3D3 !important; }
+              [data-ogsc] .code { background-color: #2A2335 !important; color: #FF8FAE !important; }
+              @media only screen and (max-width: 520px) {
+                .pad { padding: 28px 20px !important; }
+                .code { font-size: 30px !important; letter-spacing: 6px !important; }
+              }
+            </style>
             </head>
-            <body>
-                <div class="container">
-                    <h1>🔒 Recuperación de contraseña</h1>
-                    <p>Recibimos una solicitud para restablecer tu contraseña.</p>
-                    <p>Tu código de verificación es:</p>
-                    <div class="code-box">""" + code + """
-</div>
-                    <p>Este código es válido por <strong>1 hora</strong>.</p>
-                    <div class="warning">
-                        <strong>⚠️ Importante:</strong> Si no solicitaste este cambio, 
-                        ignora este mensaje y tu contraseña permanecerá sin cambios.
-                    </div>
-                    <div class="footer">
-                        <p>Este es un email automático, por favor no respondas este mensaje.</p>
-                    </div>
-                </div>
+            <body class="bg" style="margin:0;padding:0;background-color:#FAF9FC;">
+            <table role="presentation" class="bg" width="100%%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF9FC;">
+            <tr><td align="center" style="padding:32px 16px;">
+              <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+                <tr><td style="height:6px;border-radius:6px 6px 0 0;background-color:#FF4F81;background-image:linear-gradient(90deg,#FF4F81,#8A2BE2);font-size:0;line-height:0;">&nbsp;</td></tr>
+                <tr><td class="card pad" align="center" style="background-color:#FFFFFF;border:1px solid #E4E0EB;border-top:0;border-radius:0 0 20px 20px;padding:40px 36px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+                  %2$s
+                  <p class="accent" style="margin:0 0 8px;font-size:15px;font-weight:700;letter-spacing:0.5px;color:#D81B60;">%3$s</p>
+                  <h1 class="text" style="margin:0 0 16px;font-size:24px;line-height:1.3;font-weight:700;color:#1F1A29;">%1$s</h1>
+                  <p class="muted" style="margin:0 0 24px;font-size:16px;line-height:1.6;color:#5B5566;">%4$s</p>
+                  <div class="code" style="display:inline-block;margin:0 0 16px;padding:18px 28px;border:1px solid #FFC9D9;border-radius:14px;background-color:#FFF0F5;color:#D81B60;font-size:36px;font-weight:700;letter-spacing:10px;font-family:'SF Mono',Menlo,Consolas,monospace;">%5$s</div>
+                  <p class="muted" style="margin:0 0 24px;font-size:14px;color:#5B5566;">Este código es válido por <strong class="accent" style="color:#D81B60;">%6$s</strong>.</p>
+                  <p class="text" style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#1F1A29;">%7$s</p>
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0"><tr><td class="rule" style="border-top:1px solid #E4E0EB;padding-top:20px;">
+                    <p class="muted" style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#6F697A;">%8$s</p>
+                    <p class="accent" style="margin:0;font-size:13px;font-weight:600;color:#D81B60;">%3$s © %9$s</p>
+                  </td></tr></table>
+                </td></tr>
+              </table>
+            </td></tr>
+            </table>
             </body>
             </html>
-            """;
+            """.formatted(title, logo, appName, intro, code, validity, instruction, note, Year.now().getValue());
     }
 }

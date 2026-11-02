@@ -68,7 +68,7 @@ public class AuthController {
             if (e.getMessage().equals("ACCOUNT_NOT_VERIFIED")) {
                 LoginResponse response = LoginResponse.builder()
                     .success(false)
-                    .message("Debes verificar tu correo electrónico antes de iniciar sesión")
+                    .message("Antes de entrar, confirma tu correo electrónico.")
                     .email(request.getEmail())
                     .emailConfirmed(false)
                     .build();
@@ -143,8 +143,8 @@ public class AuthController {
         VerifyEmailResponse response = VerifyEmailResponse.builder()
             .success(true)
             .message(status.equals("EXPIRED_NEW_CODE_SENT") 
-                ? "El código había expirado. Se ha enviado un nuevo código a tu correo."
-                : "Código verificado exitosamente")
+                ? "Este código ya venció. Te enviamos uno nuevo; revisa tu bandeja de entrada."
+                : "Código verificado.")
             .email(request.getEmail())
             .emailConfirmed(true)
             .build();

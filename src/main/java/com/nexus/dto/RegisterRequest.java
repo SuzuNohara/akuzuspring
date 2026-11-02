@@ -14,31 +14,31 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class RegisterRequest {
     
-    @NotBlank(message = "El email es requerido")
-    @Email(message = "El formato del email no es válido")
+    @NotBlank(message = "Ingresa tu correo electrónico.")
+    @Email(message = "Ingresa un correo electrónico válido.")
     private String email;
     
-    @NotBlank(message = "La contraseña es requerida")
-    @Size(min = 8, message = "La contraseña debe tener al menos 8 caracteres")
+    @NotBlank(message = "Escribe una contraseña.")
+    @Size(min = 8, message = "Usa al menos 8 caracteres.")
     @Pattern(
         regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*()_+\\-\\[\\]{};':\\\"\\\\|,.<>/?]).{8,}$",
-        message = "La contraseña debe contener mayúscula, minúscula, número y caracter especial"
+        message = "Tu contraseña necesita mayúscula, minúscula, número y símbolo."
     )
     private String password;
     
-    @NotBlank(message = "La confirmación de contraseña es requerida")
+    @NotBlank(message = "Escribe una contraseña.")
     private String confirmPassword;
     
-    @NotBlank(message = "El nombre para mostrar es requerido")
-    @Size(min = 2, max = 255, message = "El nombre debe tener entre 2 y 255 caracteres")
+    @NotBlank(message = "Escribe tu nombre.")
+    @Size(min = 2, max = 255, message = "Tu nombre debe tener al menos 2 letras.")
     private String displayName;
     
-    @NotBlank(message = "El apodo es requerido")
-    @Size(max = 255, message = "El apodo no puede exceder los 255 caracteres")
+    @NotBlank(message = "Escribe tu apodo.")
+    @Size(max = 255, message = "Tu apodo es demasiado largo.")
     private String nickname;
     
-    @NotNull(message = "La fecha de nacimiento es requerida")
-    @Past(message = "La fecha de nacimiento debe ser en el pasado")
+    @NotNull(message = "Elige tu fecha de nacimiento.")
+    @Past(message = "Elige una fecha de nacimiento que ya haya pasado.")
     private LocalDate birthDate;
 
     @AssertTrue(message = "Debes aceptar los términos y condiciones")

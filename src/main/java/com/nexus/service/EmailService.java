@@ -156,7 +156,7 @@ public class EmailService {
                   <div class="code" style="display:inline-block;margin:0 0 16px;padding:18px 28px;border:1px solid #FFC9D9;border-radius:14px;background-color:#FFF0F5;color:#D81B60;font-size:36px;font-weight:700;letter-spacing:10px;font-family:'SF Mono',Menlo,Consolas,monospace;">%5$s</div>
                   <p class="muted" style="margin:0 0 24px;font-size:14px;color:#5B5566;">Este código es válido por <strong class="accent" style="color:#D81B60;">%6$s</strong>.</p>
                   <p class="text" style="margin:0 0 28px;font-size:16px;line-height:1.6;color:#1F1A29;">%7$s</p>
-                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0"><tr><td class="rule" style="border-top:1px solid #E4E0EB;padding-top:20px;">
+                  <table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0"><tr><td class="rule" align="center" style="border-top:1px solid #E4E0EB;padding-top:20px;text-align:center;">
                     <p class="muted" style="margin:0 0 8px;font-size:13px;line-height:1.5;color:#6F697A;">%8$s</p>
                     <p class="accent" style="margin:0;font-size:13px;font-weight:600;color:#D81B60;">%3$s © %9$s</p>
                   </td></tr></table>

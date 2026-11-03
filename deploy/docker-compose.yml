@@ -1,0 +1,124 @@
+# [despliegue] Nexus completo: MySQL, Qdrant, Ollama, backend y Caddy.
+# Solo Caddy publica puertos (80/443). MySQL, Qdrant y Ollama no tienen salida a la red:
+# Qdrant y Ollama no piden contraseña y nunca deben quedar abiertos.
+#
+# Uso (desde esta carpeta):  copy .env.example .env   (y llenar .env)
+#                            docker compose up -d --build
+name: nexus
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Falta MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: nexus
+      MYSQL_USER: ${DB_USER:?Falta DB_USER en .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Falta DB_PASSWORD en .env}
+      TZ: UTC
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # Solo corre la primera vez (con el volumen vacío): estructura y catálogo, sin usuarios.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.2
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:0.40.14
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-models:/root/.ollama
+
+  # Una sola vez: baja los dos modelos (unos 5.6 GB) al volumen de Ollama. Si ya están, termina rápido.
+  ollama-init:
+    image: ollama/ollama:0.40.14
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "sleep 5 && ollama pull ${NEXUS_AGENT_CHAT_MODEL:-mistral:7b-instruct-v0.3-q4_K_M} && ollama pull ${NEXUS_AGENT_EMBED_MODEL:-bge-m3}"]
+    restart: "no"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: nexus-backend:local
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/nexus?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Falta JWT_SECRET en .env}
+      AES_SECRET: ${AES_SECRET:?Falta AES_SECRET en .env}
+      SPRING_MAIL_USERNAME: ${MAIL_USERNAME:?Falta MAIL_USERNAME en .env}
+      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:?Falta MAIL_PASSWORD en .env}
+      APP_FRONTEND_URL: ${PUBLIC_URL:-http://localhost}
+      APP_CORS_ALLOWED_ORIGINS: ${PUBLIC_URL:-http://localhost}
+      NEXUS_AGENT_ENABLED: ${NEXUS_AGENT_ENABLED:-true}
+      NEXUS_AGENT_OLLAMA_URL: http://ollama:11434
+      NEXUS_AGENT_QDRANT_URL: http://qdrant:6333
+      NEXUS_AGENT_CHAT_MODEL: ${NEXUS_AGENT_CHAT_MODEL:-mistral:7b-instruct-v0.3-q4_K_M}
+      NEXUS_AGENT_EMBED_MODEL: ${NEXUS_AGENT_EMBED_MODEL:-bge-m3}
+      NEXUS_AGENT_TIME_POLICY: ${NEXUS_AGENT_TIME_POLICY:-HARD}
+      NEXUS_PUSH_ENABLED: ${NEXUS_PUSH_ENABLED:-true}
+      # En producción sin SQL en pantalla ni TRACE: los logs de desarrollo de application.properties
+      # llenan el disco.
+      SPRING_JPA_SHOW_SQL: "false"
+      LOGGING_LEVEL_COM_NEXUS: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: INFO
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_TRANSACTION: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_ORM_JPA: INFO
+    volumes:
+      - backend-images:/app/images
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # En la laptop ":80" (sin HTTPS); en AWS el dominio, p. ej. "nexus-app.com", y Caddy saca el certificado.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./site:/srv/site:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  mysql-data:
+  qdrant-data:
+  ollama-models:
+  backend-images:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,15 @@
+# [despliegue] Caddy: la API en /api y las páginas fijas (términos, privacidad, borrar cuenta,
+# unirme) desde ./site. Con un dominio en SITE_ADDRESS, Caddy pone HTTPS solo.
+{$SITE_ADDRESS}
+
+encode gzip
+
+handle /api/* {
+	reverse_proxy backend:8080
+}
+
+handle {
+	root * /srv/site
+	try_files {path} {path}.html {path}/index.html
+	file_server
+}

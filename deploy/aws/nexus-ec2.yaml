@@ -1,0 +1,277 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  [nexus-deploy] NEXUS en una EC2 con GPU (g4dn.xlarge) que corre docker compose: MySQL, Qdrant,
+  Ollama, backend y Caddy. Sin puerto 22 (acceso por SSM). El bucket, el repo ECR y el disco raiz
+  sobreviven a un terminate; InstanceEnabled=false congela (F2) y RootSnapshotId restaura.
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: nexus
+    AllowedPattern: "^[a-z][a-z0-9-]{1,20}$"
+  EnvName:
+    Type: String
+    Default: prod
+    AllowedValues: [prod]
+  InstanceEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: false = congelado F2 (sin instancia ni Elastic IP).
+  InstanceType:
+    Type: String
+    Default: g4dn.xlarge
+    AllowedValues: [g4dn.xlarge, g4dn.2xlarge, g6.xlarge]
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Description: >-
+      AMI fijada (no se resuelve aqui por SSM para que un update no reemplace la instancia).
+      Se obtiene de /aws/service/deeplearning/ami/x86_64/base-oss-nvidia-driver-gpu-ubuntu-24.04/latest/ami-id.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subred publica de una AZ que ofrezca el tipo de instancia.
+  RootVolumeSize:
+    Type: Number
+    Default: 100
+    MinValue: 80
+    MaxValue: 500
+  RootSnapshotId:
+    Type: String
+    Default: ""
+    Description: Vacio = disco nuevo desde la AMI. Con valor = restaura F2 desde ese snapshot.
+  BackupRetainCount:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 30
+
+Conditions:
+  HasInstance: !Equals [!Ref InstanceEnabled, "true"]
+  FromSnapshot: !Not [!Equals [!Ref RootSnapshotId, ""]]
+
+Resources:
+  # ---------- Persistente (no depende de la instancia) ----------
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${NamePrefix}-${EnvName}-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      LifecycleConfiguration:
+        Rules:
+          - Id: respaldos-30-dias
+            Status: Enabled
+            Prefix: backups/
+            ExpirationInDays: 30
+          - Id: bundles-60-dias
+            Status: Enabled
+            Prefix: bundle/
+            ExpirationInDays: 60
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  ArtifactBucketTlsOnly:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SoloTLS
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt ArtifactBucket.Arn
+              - !Sub "${ArtifactBucket.Arn}/*"
+            Condition:
+              Bool: { "aws:SecureTransport": "false" }
+
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Sub "${NamePrefix}-backend"
+      ImageScanningConfiguration: { ScanOnPush: true }
+      ImageTagMutability: IMMUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"conservar las 5 ultimas",
+            "selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},
+            "action":{"type":"expire"}}]}
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NEXUS - solo HTTP/HTTPS de entrada (Caddy); sin SSH
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP (ACME y redireccion) }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: HTTPS }
+      SecurityGroupEgress:
+        - { IpProtocol: "-1", CidrIp: 0.0.0.0/0, Description: "salida libre: Gmail 587, Expo, ECR, SSM, modelos" }
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-ec2-sg" }
+        - { Key: project, Value: !Ref NamePrefix }
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: nexus-runtime
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LeerConfiguracion
+                Effect: Allow
+                Action: [ssm:GetParametersByPath, ssm:GetParameter, ssm:GetParameters]
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${NamePrefix}/${EnvName}*"
+              - Sid: DescifrarConfiguracion
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals: { "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com" }
+              - Sid: ListarBucket
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ArtifactBucket.Arn
+              - Sid: LeerBundles
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/bundle/*"
+              - Sid: EscribirRespaldos
+                Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/backups/*"
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  DlmRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: dlm.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSDataLifecycleManagerServiceRole
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  DailySnapshots:
+    Type: AWS::DLM::LifecyclePolicy
+    Properties:
+      Description: !Sub "${NamePrefix} - snapshot diario del disco raiz"
+      State: ENABLED
+      ExecutionRoleArn: !GetAtt DlmRole.Arn
+      PolicyDetails:
+        PolicyType: EBS_SNAPSHOT_MANAGEMENT
+        ResourceTypes: [VOLUME]
+        TargetTags:
+          - { Key: nexus-backup, Value: daily }
+        Schedules:
+          - Name: diario-0900-utc
+            CopyTags: true
+            CreateRule: { Interval: 24, IntervalUnit: HOURS, Times: ["09:00"] }
+            RetainRule: { Count: !Ref BackupRetainCount }
+            TagsToAdd:
+              - { Key: project, Value: !Ref NamePrefix }
+              - { Key: nexus-snapshot, Value: dlm }
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  # ---------- Instancia (se quita con InstanceEnabled=false) ----------
+  Instance:
+    Type: AWS::EC2::Instance
+    Condition: HasInstance
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref SecurityGroup]
+      DisableApiTermination: false
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: !Ref RootVolumeSize
+            Encrypted: true
+            DeleteOnTermination: false
+            SnapshotId: !If [FromSnapshot, !Ref RootSnapshotId, !Ref "AWS::NoValue"]
+      PropagateTagsToVolumeOnCreation: true
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-${EnvName}-gpu" }
+        - { Key: project, Value: !Ref NamePrefix }
+        - { Key: nexus-backup, Value: daily }
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Condition: HasInstance
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-${EnvName}-ip" }
+        - { Key: project, Value: !Ref NamePrefix }
+
+  ElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Condition: HasInstance
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref Instance
+
+Outputs:
+  BucketName:
+    Value: !Ref ArtifactBucket
+  BackendRepositoryUri:
+    Value: !GetAtt BackendRepository.RepositoryUri
+  SecurityGroupId:
+    Value: !Ref SecurityGroup
+  InstanceId:
+    Condition: HasInstance
+    Value: !Ref Instance
+  PublicIp:
+    Condition: HasInstance
+    Value: !Ref ElasticIp
+  AvailabilityZone:
+    Condition: HasInstance
+    Value: !GetAtt Instance.AvailabilityZone

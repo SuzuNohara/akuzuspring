@@ -1,14 +1,25 @@
 # [nexus-deploy] Capa para la EC2 de AWS (va encima de docker-compose.yml y docker-compose.gpu.yml).
+# - La base es RDS (stack nexus-db): el servicio mysql no arranca (perfil local-db) y el backend usa DB_HOST con TLS.
 # - El backend no se compila en la EC2: se baja de ECR con el tag que fija BACKEND_IMAGE (.env).
 # - Los modelos se quedan fijos en la VRAM (-1): una carga fria de Mistral (~10 s) rompe RNF-12.
 #
 # Uso (lo hace aws/bootstrap.sh):
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.aws.yml up -d
 services:
+  mysql:
+    profiles: ["local-db"]
+
   backend:
     build: !reset null
     image: ${BACKEND_IMAGE:?Falta BACKEND_IMAGE en .env}
     pull_policy: missing
+    depends_on: !override
+      qdrant:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://${DB_HOST:?Falta DB_HOST en .env}:3306/nexus?sslMode=REQUIRED&serverTimezone=UTC
 
   ollama:
     environment:

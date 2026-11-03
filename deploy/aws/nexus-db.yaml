@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  [nexus-deploy] Base de NEXUS en RDS MySQL 8.0, separada de la EC2 (stack nexus-db). Sin acceso publico:
+  solo acepta 3306 desde el security group de la EC2 (stack nexus-ec2). Al borrar el stack deja un snapshot
+  final; DbSnapshotIdentifier restaura desde un snapshot.
+
+Parameters:
+  NamePrefix:
+    Type: String
+    Default: nexus
+    AllowedPattern: "^[a-z][a-z0-9-]{1,20}$"
+  EnvName:
+    Type: String
+    Default: prod
+    AllowedValues: [prod]
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Al menos dos subredes en AZ distintas (requisito del DB subnet group).
+  AppSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Salida SecurityGroupId del stack nexus-ec2.
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t4g.small, db.t4g.medium]
+  AllocatedStorage:
+    Type: Number
+    Default: 20
+    MinValue: 20
+    MaxValue: 200
+  EngineVersion:
+    Type: String
+    Default: "8.0"
+  MasterUsername:
+    Type: String
+    Default: admin
+    AllowedPattern: "^[a-z][a-z0-9_]{1,15}$"
+  MasterPasswordParameter:
+    Type: String
+    Default: /nexus/prod/DB_MASTER_PASSWORD
+    Description: Parametro SecureString de SSM con la contrasena maestra (se lee por referencia dinamica).
+  DbSnapshotIdentifier:
+    Type: String
+    Default: ""
+    Description: Vacio = base nueva. Con valor = restaura desde ese snapshot (ARN o identificador).
+  BackupRetentionDays:
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+
+Conditions:
+  FromSnapshot: !Not [!Equals [!Ref DbSnapshotIdentifier, ""]]
+
+Resources:
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "${NamePrefix} - subredes de la base"
+      SubnetIds: !Ref SubnetIds
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NEXUS - MySQL solo desde la EC2
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref AppSecurityGroupId
+          Description: MySQL desde nexus-ec2-sg
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-db-sg" }
+        - { Key: project, Value: !Ref NamePrefix }
+
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: mysql8.0
+      Description: !Sub "${NamePrefix} - MySQL 8.0"
+      Parameters:
+        # init.sql trae triggers; con binlog activo (respaldos) RDS los rechaza sin este parametro.
+        log_bin_trust_function_creators: "1"
+        character_set_server: utf8mb4
+        collation_server: utf8mb4_0900_ai_ci
+        time_zone: UTC
+        require_secure_transport: "1"
+      Tags:
+        - { Key: project, Value: !Ref NamePrefix }
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub "${NamePrefix}-${EnvName}-mysql"
+      Engine: mysql
+      EngineVersion: !Ref EngineVersion
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: !Ref AllocatedStorage
+      StorageType: gp3
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      Port: "3306"
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      DBParameterGroupName: !Ref DbParameterGroup
+      DBSnapshotIdentifier: !If [FromSnapshot, !Ref DbSnapshotIdentifier, !Ref "AWS::NoValue"]
+      MasterUsername: !If [FromSnapshot, !Ref "AWS::NoValue", !Ref MasterUsername]
+      MasterUserPassword: !Sub "{{resolve:ssm-secure:${MasterPasswordParameter}}}"
+      BackupRetentionPeriod: !Ref BackupRetentionDays
+      PreferredBackupWindow: "08:00-08:30"
+      PreferredMaintenanceWindow: "sun:08:30-sun:09:30"
+      AutoMinorVersionUpgrade: true
+      CopyTagsToSnapshot: true
+      DeletionProtection: false
+      EnablePerformanceInsights: false
+      Tags:
+        - { Key: Name, Value: !Sub "${NamePrefix}-${EnvName}-mysql" }
+        - { Key: project, Value: !Ref NamePrefix }
+
+Outputs:
+  DbEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DbPort:
+    Value: !GetAtt Database.Endpoint.Port
+  DbInstanceId:
+    Value: !Ref Database
+  DbSecurityGroupId:
+    Value: !Ref DbSecurityGroup

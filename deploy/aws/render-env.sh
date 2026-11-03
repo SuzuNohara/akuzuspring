@@ -23,7 +23,7 @@ for name, value in sorted(rows):
     print(f"{key}={value}")
 ' > "$tmp"
 
-required=(MYSQL_ROOT_PASSWORD DB_USER DB_PASSWORD JWT_SECRET AES_SECRET MAIL_USERNAME MAIL_PASSWORD BACKEND_IMAGE SITE_ADDRESS PUBLIC_URL)
+required=(DB_HOST DB_MASTER_USER DB_MASTER_PASSWORD DB_USER DB_PASSWORD JWT_SECRET AES_SECRET MAIL_USERNAME MAIL_PASSWORD BACKEND_IMAGE SITE_ADDRESS PUBLIC_URL BACKUP_BUCKET)
 missing=()
 for k in "${required[@]}"; do
   grep -q "^${k}=" "$tmp" || missing+=("$k")
@@ -32,6 +32,9 @@ if [ "${#missing[@]}" -gt 0 ]; then
   echo "Faltan en SSM ${prefix}: ${missing[*]}" >&2
   exit 1
 fi
+# En AWS la base es RDS y el servicio mysql no arranca (perfil local-db), pero docker-compose.yml exige la
+# variable al interpolar el archivo completo.
+grep -q '^MYSQL_ROOT_PASSWORD=' "$tmp" || echo 'MYSQL_ROOT_PASSWORD=sin-uso-en-aws' >> "$tmp"
 
 mv "$tmp" "$here/.env"
 echo "deploy/.env escrito con $(wc -l < "$here/.env") variables"

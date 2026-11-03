@@ -20,7 +20,7 @@ Cada parámetro es una línea de `deploy/.env` en la EC2 (`render-env.sh`).
 
 | Parámetro | Tipo | Quién lo pone |
 |---|---|---|
-| `DB_MASTER_PASSWORD`, `DB_PASSWORD`, `JWT_SECRET`, `AES_SECRET` | SecureString | NOVA, con `openssl rand -hex` directo a `put-parameter` (sin mostrarlos) |
+| `DB_MASTER_PASSWORD`, `DB_PASSWORD`, `JWT_SECRET`, `AES_SECRET` | SecureString | NOVA, con `openssl rand -hex` directo a `put-parameter` (sin mostrarlos). `DB_MASTER_PASSWORD` con `-hex 20`: RDS MySQL admite como máximo 41 caracteres |
 | `MAIL_USERNAME`, `MAIL_PASSWORD` | SecureString | el dev, en su terminal |
 | `DUCKDNS_TOKEN` | SecureString | el dev, si el DNS es DuckDNS |
 | `DB_HOST` (salida `DbEndpoint` de `nexus-db`), `DB_MASTER_USER` (`admin`), `DB_USER` (`nexus`), `SITE_ADDRESS`, `PUBLIC_URL`, `BACKUP_BUCKET`, `DUCKDNS_DOMAIN` | String | NOVA |

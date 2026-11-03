@@ -51,6 +51,10 @@ Parameters:
     Default: 7
     MinValue: 1
     MaxValue: 35
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [7, 14, 30]
 
 Conditions:
   FromSnapshot: !Not [!Equals [!Ref DbSnapshotIdentifier, ""]]
@@ -91,11 +95,28 @@ Resources:
         collation_server: utf8mb4_0900_ai_ci
         time_zone: UTC
         require_secure_transport: "1"
+        # Consultas de mas de 1 s al log slowquery (exportado a CloudWatch Logs). Dinamicos: sin reinicio.
+        slow_query_log: "1"
+        long_query_time: "1"
+        log_output: FILE
       Tags:
         - { Key: project, Value: !Ref NamePrefix }
 
+  # RDS crea estos grupos al exportar; creados aqui tienen retencion (si no, nunca expiran).
+  ErrorLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/rds/instance/${NamePrefix}-${EnvName}-mysql/error"
+      RetentionInDays: !Ref LogRetentionDays
+  SlowQueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/rds/instance/${NamePrefix}-${EnvName}-mysql/slowquery"
+      RetentionInDays: !Ref LogRetentionDays
+
   Database:
     Type: AWS::RDS::DBInstance
+    DependsOn: [ErrorLogGroup, SlowQueryLogGroup]
     DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
@@ -121,7 +142,9 @@ Resources:
       AutoMinorVersionUpgrade: true
       CopyTagsToSnapshot: true
       DeletionProtection: false
+      # Performance Insights no existe para db.t4g.micro (verificado 2026-11-03).
       EnablePerformanceInsights: false
+      EnableCloudwatchLogsExports: [error, slowquery]
       Tags:
         - { Key: Name, Value: !Sub "${NamePrefix}-${EnvName}-mysql" }
         - { Key: project, Value: !Ref NamePrefix }

@@ -48,6 +48,11 @@ Parameters:
     Default: 7
     MinValue: 1
     MaxValue: 30
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [7, 14, 30]
+    Description: Dias que CloudWatch Logs guarda los logs de los contenedores.
 
 Conditions:
   HasInstance: !Equals [!Ref InstanceEnabled, "true"]
@@ -172,6 +177,10 @@ Resources:
                 Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub "${ArtifactBucket.Arn}/backups/*"
+              - Sid: EnviarLogs
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/${NamePrefix}/${EnvName}/*"
       Tags:
         - { Key: project, Value: !Ref NamePrefix }
 
@@ -215,6 +224,103 @@ Resources:
               - { Key: nexus-snapshot, Value: dlm }
       Tags:
         - { Key: project, Value: !Ref NamePrefix }
+
+  # ---------- Logs y metricas (docker-compose.aws.yml manda los contenedores con awslogs) ----------
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${NamePrefix}/${EnvName}/backend"
+      RetentionInDays: !Ref LogRetentionDays
+  CaddyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${NamePrefix}/${EnvName}/caddy"
+      RetentionInDays: !Ref LogRetentionDays
+  OllamaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${NamePrefix}/${EnvName}/ollama"
+      RetentionInDays: !Ref LogRetentionDays
+  QdrantLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/${NamePrefix}/${EnvName}/qdrant"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # Caddy escribe una linea JSON por peticion (status, duration en segundos, request.uri).
+  ApiRequestsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CaddyLogGroup
+      FilterPattern: '{ $.request.uri = "/api/*" }'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: ApiRequests, MetricValue: "1", DefaultValue: 0, Unit: Count }
+  ApiLatencyFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CaddyLogGroup
+      FilterPattern: '{ $.request.uri = "/api/*" }'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: ApiLatency, MetricValue: "$.duration", Unit: Seconds }
+  Api5xxFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CaddyLogGroup
+      FilterPattern: '{ $.status >= 500 }'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: Api5xx, MetricValue: "1", DefaultValue: 0, Unit: Count }
+  # RecommendationComposer escribe "compose mode=<LLM|LLM_FILLED|RULES_*|...> ... llm_ms=..." por recomendacion.
+  AgentCompositionsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '"compose mode="'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: AgentCompositions, MetricValue: "1", DefaultValue: 0, Unit: Count }
+  AgentLlmFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '"compose mode=LLM"'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: AgentLlm, MetricValue: "1", DefaultValue: 0, Unit: Count }
+  AgentRulesFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '"compose mode=RULES"'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: AgentRules, MetricValue: "1", DefaultValue: 0, Unit: Count }
+  BackendErrorsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref BackendLogGroup
+      FilterPattern: '" ERROR "'
+      MetricTransformations:
+        - { MetricNamespace: NEXUS, MetricName: BackendErrors, MetricValue: "1", DefaultValue: 0, Unit: Count }
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${NamePrefix}-${EnvName}"
+      DashboardBody: !Sub
+        - |
+          {"widgets":[
+           {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"API: peticiones y errores 5xx","region":"${AWS::Region}","stat":"Sum","period":300,
+            "metrics":[["NEXUS","ApiRequests"],["NEXUS","Api5xx"]]}},
+           {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"API: latencia (s)","region":"${AWS::Region}","period":300,
+            "metrics":[["NEXUS","ApiLatency",{"stat":"p50"}],["NEXUS","ApiLatency",{"stat":"p95"}],["NEXUS","ApiLatency",{"stat":"Maximum"}]]}},
+           {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Agente: recomendaciones por modo","region":"${AWS::Region}","stat":"Sum","period":300,
+            "metrics":[["NEXUS","AgentCompositions"],["NEXUS","AgentLlm"],["NEXUS","AgentRules"],["NEXUS","BackendErrors"]]}},
+           {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"EC2: CPU y estado","region":"${AWS::Region}","period":300,
+            "metrics":[["AWS/EC2","CPUUtilization","InstanceId","${Iid}",{"stat":"Average"}],["AWS/EC2","StatusCheckFailed","InstanceId","${Iid}",{"stat":"Maximum"}]]}},
+           {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"RDS: CPU y conexiones","region":"${AWS::Region}","period":300,"stat":"Average",
+            "metrics":[["AWS/RDS","CPUUtilization","DBInstanceIdentifier","${Db}"],["AWS/RDS","DatabaseConnections","DBInstanceIdentifier","${Db}",{"yAxis":"right"}]]}},
+           {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"RDS: latencia de lectura/escritura (s) y memoria libre","region":"${AWS::Region}","period":300,"stat":"Average",
+            "metrics":[["AWS/RDS","ReadLatency","DBInstanceIdentifier","${Db}"],["AWS/RDS","WriteLatency","DBInstanceIdentifier","${Db}"],["AWS/RDS","FreeableMemory","DBInstanceIdentifier","${Db}",{"yAxis":"right"}]]}}
+          ]}
+        - Iid: !If [HasInstance, !Ref Instance, "sin-instancia"]
+          Db: !Sub "${NamePrefix}-${EnvName}-mysql"
 
   # ---------- Instancia (se quita con InstanceEnabled=false) ----------
   Instance:
@@ -277,3 +383,7 @@ Outputs:
   AvailabilityZone:
     Condition: HasInstance
     Value: !GetAtt Instance.AvailabilityZone
+  LogGroupPrefix:
+    Value: !Sub "/${NamePrefix}/${EnvName}"
+  DashboardName:
+    Value: !Ref Dashboard

@@ -48,16 +48,45 @@ Sin dominio: `SITE_ADDRESS=:80` y `PUBLIC_URL=http://<elastic-ip>`. Con dominio:
    ```
 7. Verificar: `nvidia-smi`, `ollama ps` (100 % GPU), `/api/auth/health` y los conteos que imprime `db-init.sh`.
 
-## Operación
+## Operación: `nexus-ops.sh`
 
-| Rutina | Pasos |
-|---|---|
-| `deploy` | `push-release.sh` → Run Command: bundle + `bootstrap.sh` |
-| `freeze` F1 | Run Command `respaldar.sh --s3` → `ec2 stop-instances` → `rds stop-db-instance` (AWS la vuelve a encender sola a los 7 días) |
-| `wake` F1 | `rds start-db-instance` → esperar `available` → `ec2 start-instances` → SSM `Online` → Run Command `bootstrap.sh` |
-| `freeze` F2 | `respaldar.sh --s3` → `stop-instances` → `create-snapshot` del disco raíz (`nexus-snapshot=f2`), esperar `completed` → `nexus-ec2` con `InstanceEnabled=false` → `delete-volume` del disco suelto → `delete-stack nexus-db` (deja el snapshot final) |
-| `restore` F2 | `nexus-db` con `DbSnapshotIdentifier=<snapshot final>` → `DB_HOST` nuevo en SSM → `nexus-ec2` con `InstanceEnabled=true RootSnapshotId=<snap>` → Run Command: bundle + `bootstrap.sh` (el DNS va a la IP nueva) |
-| `destroy` | `respaldar.sh --s3` → `delete-stack nexus-ec2` → borrar el disco suelto → `delete-stack nexus-db` (snapshot final). El bucket, el repo ECR y los snapshots quedan hasta que se pida borrarlos |
+`AWS_PROFILE=nexus-admin deploy/aws/nexus-ops.sh <comando> [--yes]`. Cada comando pide escribir una frase antes
+de tocar nada (`--yes` la omite, para sunsetcli). El estado de las rutinas (modo, snapshots de F2, VPC y subredes
+de la base) vive en SSM bajo `/nexus/state/`, fuera de `/nexus/prod` para que no entre al `.env`.
+
+| Comando | Pasos | Costo después |
+|---|---|---|
+| `estado` | modo, EC2, RDS, salud, respaldos, snapshots | — |
+| `apagar` (F1) | `respaldar.sh --s3` → stop EC2 → stop RDS | ~19 USD/mes. **La RDS se reenciende sola a los 7 días** |
+| `encender` | start RDS → `available` → start EC2 → SSM `Online` → `bootstrap.sh` → salud | 0,54 USD/h |
+| `congelar` (F2) | respaldo → stop → snapshot del disco (`nexus-snapshot=f2`) → `nexus-ec2` con `InstanceEnabled=false` → borra el disco suelto → borra `nexus-db` (snapshot final) | ~7 USD/mes |
+| `restaurar` | `nexus-db` desde el snapshot final → `DB_HOST` → `nexus-ec2` con `InstanceEnabled=true RootSnapshotId=<snap>` → `PUBLIC_URL` con la IP nueva (si no hay dominio) → `bootstrap.sh` | 0,54 USD/h |
+| `desplegar` | `push-release.sh` → bundle + `bootstrap.sh` → salud | — |
+| `destruir` | respaldo → borra `nexus-db` (snapshot final) **antes** que `nexus-ec2` (el SG de la base referencia al de la EC2) → borra el disco suelto → lista los restos | ~2–4 USD/mes en restos |
+
+Las rutinas usan `update-stack --use-previous-template`: no aplican cambios de plantilla pendientes. Tras
+`restaurar`, `DbSnapshotIdentifier` queda fijado en `nexus-db`: no vaciarlo (reemplazaría la base).
+`RootSnapshotId` solo se cambia sin instancia (con instancia, la reemplaza).
 
 En la EC2 quedan Qdrant, los modelos y los certificados de Caddy, en volúmenes Docker sobre el disco raíz
 (`DeleteOnTermination: false`). La base vive solo en la RDS.
+
+## Monitoreo: `nexus-monitor.sh`
+
+`AWS_PROFILE=nexus-admin deploy/aws/nexus-monitor.sh <comando> [--desde 15m|1h|1d|7d]`
+
+| Comando | Fuente | Qué muestra |
+|---|---|---|
+| `api` | Logs Insights sobre `/nexus/prod/caddy` (una línea JSON por petición; Caddy oculta `Authorization` y `Cookie`) | peticiones por status, latencia p50/p95/max, rutas top, clientes top, últimos 5xx |
+| `agente` | `/nexus/prod/backend` (`compose mode=… llm_ms=…`) y `/nexus/prod/ollama` (`[GIN]`) | recomendaciones por modo (LLM, LLM_FILLED, RULES_*), llm_ms p50/p95/max, tokens, fuera de presupuesto, avisos `[t06b]`, llamadas a Ollama |
+| `db` | métricas `AWS/RDS` + `/aws/rds/instance/nexus-prod-mysql/{slowquery,error}` | CPU, créditos, conexiones, memoria, swap, IOPS, latencias, disco; consultas > 1 s; errores |
+| `ec2` | métricas `AWS/EC2` + SSM | CPU, red, status checks; GPU, memoria, disco, contenedores, `ollama ps` |
+| `logs <svc>` / `buscar <svc> <patrón>` | `aws logs tail` | en vivo o filtrado: `backend`, `caddy`, `ollama`, `qdrant`, `db-error`, `db-slow` |
+| `resumen` / `dashboard` | todo / dashboard `nexus-prod` | métricas `NEXUS/*` (ApiRequests, Api5xx, ApiLatency, AgentCompositions, AgentLlm, AgentRules, BackendErrors) + EC2 + RDS |
+
+Los contenedores mandan los logs con el driver `awslogs` (`docker-compose.aws.yml`); Docker guarda copia local,
+así que `docker compose logs` sigue funcionando. Retención 14 días (`LogRetentionDays`).
+
+No disponible: Performance Insights (no existe para `db.t4g.micro`), memoria/disco/GPU como métricas de CloudWatch
+(requieren el CloudWatch Agent; `ec2` los lee por SSM), y el texto de cada consulta SQL (el log `general` o el
+plugin de auditoría lo darían, a costa de volumen y datos personales en los logs).

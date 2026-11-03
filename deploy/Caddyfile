@@ -4,6 +4,12 @@
 
 encode gzip
 
+# Una linea JSON por peticion (metodo, ruta, status, duracion, IP). Caddy oculta Authorization y Cookie.
+log {
+	output stdout
+	format json
+}
+
 handle /api/* {
 	reverse_proxy backend:8080
 }

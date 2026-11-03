@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Data
 @Builder
@@ -22,6 +23,7 @@ public class LoginResponse {
     private String displayName;
     private String nickname;
     private String linkCode;
+    private LocalDate birthDate;
     
     // Token de sesion JWT (nexus-AUTH-01). Null en toda respuesta de fallo.
     private String token;

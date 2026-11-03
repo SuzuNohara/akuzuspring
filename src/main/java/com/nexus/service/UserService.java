@@ -601,6 +601,7 @@ public class UserService {
             .email(user.getEmail())
             .displayName(user.getDisplayName())
             .nickname(user.getNickname())
+            .birthDate(user.getBirthDate())
             .emailConfirmed(user.getEmailConfirmed())
             .emailChanged(emailChanged)
             .message(emailChanged ? 

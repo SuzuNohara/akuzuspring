@@ -1,6 +1,7 @@
 package com.nexus.dto;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,6 +19,7 @@ public class VerifyEmailResponse {
     private String email;
     private String displayName;
     private String nickname;
+    private LocalDate birthDate;
     private boolean emailConfirmed;
 
     // Figma H4: al verificar el correo se entra directo, con la misma sesion que da el login.

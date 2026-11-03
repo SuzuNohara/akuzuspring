@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Data
 @Builder
@@ -17,6 +18,7 @@ public class UpdateProfileResponse {
     private String email;
     private String displayName;
     private String nickname;
+    private LocalDate birthDate;
     private Boolean emailConfirmed;
     private Boolean emailChanged;
     private String message;

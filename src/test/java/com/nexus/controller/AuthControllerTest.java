@@ -17,6 +17,7 @@ import com.nexus.security.JwtService;
 import com.nexus.service.PreferenceService;
 import com.nexus.service.UserService;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -74,7 +75,8 @@ class AuthControllerTest {
                                 .content(LOGIN_BODY))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").value("t.o.k"))
-                .andExpect(jsonPath("$.tokenExpiresAt").isNotEmpty());
+                .andExpect(jsonPath("$.tokenExpiresAt").isNotEmpty())
+                .andExpect(jsonPath("$.birthDate").value("1998-05-14"));
     }
 
     @Test
@@ -166,7 +168,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.token").value("t.o.k"))
                 .andExpect(jsonPath("$.tokenExpiresAt").isNotEmpty())
                 .andExpect(jsonPath("$.linkCode").value("ABCD-1234"))
-                .andExpect(jsonPath("$.questionnaireCompleted").value(false));
+                .andExpect(jsonPath("$.questionnaireCompleted").value(false))
+                .andExpect(jsonPath("$.birthDate").value("1998-05-14"));
     }
 
     @Test
@@ -207,6 +210,7 @@ class AuthControllerTest {
                 .displayName("Ada")
                 .nickname("ada")
                 .linkCode("ABCD-1234")
+                .birthDate(LocalDate.of(1998, 5, 14))
                 .build();
     }
 }

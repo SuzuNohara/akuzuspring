@@ -36,7 +36,8 @@ Sin dominio: `SITE_ADDRESS=:80` y `PUBLIC_URL=http://<elastic-ip>`. Con dominio:
 3. Secretos en SSM (tabla de arriba), incluida `DB_MASTER_PASSWORD` **antes** de crear `nexus-db`.
 4. `nexus-db`: `aws cloudformation deploy --stack-name nexus-db --template-file deploy/aws/nexus-db.yaml --parameter-overrides VpcId=… SubnetIds=<dos o más subredes> AppSecurityGroupId=<salida SecurityGroupId de nexus-ec2>`. Guardar `DbEndpoint` en `/nexus/prod/DB_HOST`.
 5. `deploy/aws/push-release.sh`.
-6. Run Command (`AWS-RunShellScript`) en la instancia:
+6. Run Command (`AWS-RunShellScript`, que corre con `sh`: usar `set -eu`, no `pipefail`; la salida completa va a
+   S3 con `--output-s3-bucket-name <bucket> --output-s3-key-prefix backups/ssm-logs`) en la instancia:
    ```
    mkdir -p /opt/nexus && cd /opt/nexus
    aws s3 cp s3://<bucket>/bundle/deploy-latest.tgz /tmp/deploy.tgz

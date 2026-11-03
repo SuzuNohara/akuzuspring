@@ -70,5 +70,10 @@ embed="${embed:-bge-m3}"
 incurl http://ollama:11434/api/generate \
   -d "{\"model\":\"$chat\",\"prompt\":\"ok\",\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_ctx\":8192,\"num_predict\":1}}"
 incurl http://ollama:11434/api/embed -d "{\"model\":\"$embed\",\"input\":\"ok\",\"keep_alive\":-1}"
+# La primera solicitud real (~3 800 tokens de prompt) tardo 34 s sin recargar el modelo; las siguientes, 6-7 s.
+# Un /api/chat con un prompt de ese tamano paga ese costo aqui y no en la primera recomendacion.
+long="$(seq 1 900 | sed 's/^/lugar /' | tr '\n' ',')"
+incurl --max-time 120 http://ollama:11434/api/chat \
+  -d "{\"model\":\"$chat\",\"messages\":[{\"role\":\"user\",\"content\":\"Resume en una palabra: $long\"}],\"stream\":false,\"keep_alive\":-1,\"options\":{\"num_ctx\":8192,\"num_predict\":8,\"temperature\":0.2}}"
 "${compose[@]}" exec -T ollama ollama ps
 log "listo"

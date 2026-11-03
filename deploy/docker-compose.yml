@@ -110,6 +110,9 @@ services:
       NEXUS_AGENT_CHAT_MODEL: ${NEXUS_AGENT_CHAT_MODEL:-mistral:7b-instruct-v0.3-q4_K_M}
       NEXUS_AGENT_EMBED_MODEL: ${NEXUS_AGENT_EMBED_MODEL:-bge-m3}
       NEXUS_AGENT_TIME_POLICY: ${NEXUS_AGENT_TIME_POLICY:-HARD}
+      # RNF-12: budget = toda la solicitud; cada llamada a Mistral se corta en min(llm-timeout, resto - 300 ms).
+      NEXUS_AGENT_BUDGET: ${NEXUS_AGENT_BUDGET:-9s}
+      NEXUS_AGENT_LLMTIMEOUT: ${NEXUS_AGENT_LLM_TIMEOUT:-7s}
       NEXUS_PUSH_ENABLED: ${NEXUS_PUSH_ENABLED:-true}
       # En producción sin SQL en pantalla ni TRACE: los logs de desarrollo de application.properties
       # llenan el disco.

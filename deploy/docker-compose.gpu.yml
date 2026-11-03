@@ -7,6 +7,9 @@
 #             (la columna PROCESSOR debe decir 100% GPU)
 services:
   ollama:
+    environment:
+      # Ya sale "auto -> enabled" en la T4 (compute 7.5); explicito para que no dependa de la version.
+      OLLAMA_FLASH_ATTENTION: "1"
     deploy:
       resources:
         reservations:

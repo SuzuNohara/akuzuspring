@@ -4,6 +4,7 @@
 #
 # Uso (desde esta carpeta):  copy .env.example .env   (y llenar .env)
 #                            docker compose up -d --build
+# En la EC2 con GPU:         docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
 name: nexus
 
 services:
@@ -27,12 +28,21 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+    mem_limit: ${MYSQL_MEM_LIMIT:-1g}
 
   qdrant:
     image: qdrant/qdrant:v1.19.2
     restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage
+    # La imagen no trae curl: se pregunta /readyz por /dev/tcp de bash.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    mem_limit: ${QDRANT_MEM_LIMIT:-1g}
 
   ollama:
     image: ollama/ollama:0.40.14
@@ -41,15 +51,34 @@ services:
       OLLAMA_KEEP_ALIVE: 30m
     volumes:
       - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    # La GPU se pide en docker-compose.gpu.yml (AWS); aquí corre en CPU para que la laptop funcione sin NVIDIA.
 
   # Una sola vez: baja los dos modelos (unos 5.6 GB) al volumen de Ollama. Si ya están, termina rápido.
   ollama-init:
     image: ollama/ollama:0.40.14
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["sh", "-c", "sleep 5 && ollama pull ${NEXUS_AGENT_CHAT_MODEL:-mistral:7b-instruct-v0.3-q4_K_M} && ollama pull ${NEXUS_AGENT_EMBED_MODEL:-bge-m3}"]
+    # Reintenta cada pull hasta 5 veces: una red lenta no deja al backend sin arrancar.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        for m in "${NEXUS_AGENT_CHAT_MODEL:-mistral:7b-instruct-v0.3-q4_K_M}" "${NEXUS_AGENT_EMBED_MODEL:-bge-m3}"; do
+          n=0
+          until ollama pull "$$m"; do
+            n=$$((n+1)); [ "$$n" -ge 5 ] && echo "No se pudo bajar $$m" && exit 1
+            sleep 10
+          done
+        done
     restart: "no"
 
   backend:
@@ -62,7 +91,7 @@ services:
       mysql:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       ollama-init:
         condition: service_completed_successfully
     environment:
@@ -92,6 +121,8 @@ services:
       LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_ORM_JPA: INFO
     volumes:
       - backend-images:/app/images
+    # La JVM toma el 60 % de este límite (MaxRAMPercentage del Dockerfile), no el 60 % de la máquina.
+    mem_limit: ${BACKEND_MEM_LIMIT:-2g}
     logging:
       driver: json-file
       options:

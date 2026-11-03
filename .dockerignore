@@ -1,0 +1,11 @@
+# [nexus-deploy] El contexto del build es la raíz del backend; solo hacen falta pom.xml, configs y src/.
+.git
+target/
+node_modules/
+logs/
+images/
+postman/
+scripts/
+deploy/*
+!deploy/Dockerfile
+.env

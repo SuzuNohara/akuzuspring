@@ -21,7 +21,9 @@ Parameters:
   InstanceType:
     Type: String
     Default: g4dn.xlarge
-    AllowedValues: [g4dn.xlarge, g4dn.2xlarge, g6.xlarge]
+    # m7i.xlarge (sin GPU) solo para probar la infraestructura mientras AWS aprueba la cuota G:
+    # bootstrap.sh detecta que no hay GPU y Mistral responde por reglas (RNF-12 no se valida asi).
+    AllowedValues: [g4dn.xlarge, g4dn.2xlarge, g6.xlarge, m7i.xlarge]
   ImageId:
     Type: AWS::EC2::Image::Id
     Description: >-

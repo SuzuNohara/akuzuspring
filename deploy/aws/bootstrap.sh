@@ -6,9 +6,17 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$here"
 export AWS_REGION="${AWS_REGION:-us-east-1}"
-compose=(docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.aws.yml)
-
 log() { printf '[bootstrap %s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+
+# Con GPU (g4dn/g6) se agrega la capa gpu. Sin GPU (m7i, solo mientras se aprueba la cuota G) Ollama corre
+# en CPU y el agente responde por reglas: sirve para probar la infraestructura, no RNF-12.
+if nvidia-smi -L >/dev/null 2>&1; then
+  gpu=true
+  compose=(docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.aws.yml)
+else
+  gpu=false
+  compose=(docker compose -f docker-compose.yml -f docker-compose.aws.yml)
+fi
 
 # Las llamadas internas van por la red de compose con un contenedor de curl: la imagen del backend no
 # trae curl, y con un dominio en SITE_ADDRESS Caddy no responde a Host: localhost.
@@ -19,10 +27,14 @@ health() { incurl --max-time 5 http://backend:8080/api/auth/health; }
 log "1/7 GPU y Docker"
 command -v docker >/dev/null || { echo "Docker no esta instalado (la AMI deberia traerlo)" >&2; exit 1; }
 command -v aws >/dev/null || { echo "AWS CLI no esta instalado" >&2; exit 1; }
-nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-if ! docker info --format '{{json .Runtimes}}' | grep -q nvidia; then
-  nvidia-ctk runtime configure --runtime=docker
-  systemctl restart docker
+if $gpu; then
+  nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+  if ! docker info --format '{{json .Runtimes}}' | grep -q nvidia; then
+    nvidia-ctk runtime configure --runtime=docker
+    systemctl restart docker
+  fi
+else
+  log "SIN GPU: modo de prueba de infraestructura (Ollama en CPU; el agente respondera por reglas)"
 fi
 systemctl enable --now docker >/dev/null
 

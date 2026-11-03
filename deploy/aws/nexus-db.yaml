@@ -47,8 +47,8 @@ Parameters:
     Description: Vacio = base nueva. Con valor = restaura desde ese snapshot (ARN o identificador).
   BackupRetentionDays:
     Type: Number
-    # El plan gratuito de AWS no acepta mas de 1 dia; subir a 7 al pasar la cuenta al plan de pago.
-    Default: 1
+    # Requiere la cuenta en plan de pago: el plan gratuito de AWS no acepta mas de 1 dia.
+    Default: 7
     MinValue: 1
     MaxValue: 35
 

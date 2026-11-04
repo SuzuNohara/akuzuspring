@@ -20,9 +20,11 @@ import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.LinkRepository;
 import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserPreferenceRepository;
+import com.nexus.repository.UserRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +35,8 @@ class OnboardingServiceTest {
     private static final long SAM = 2L;
     private static final long LINK_ID = 7L;
     private static final Instant LINKED_AT = Instant.parse("2026-10-01T12:00:00Z");
+    private static final Instant ANA_SIGNUP = Instant.parse("2026-09-01T10:00:00Z");
+    private static final Instant SAM_SIGNUP = Instant.parse("2026-09-02T10:00:00Z");
 
     private final UserPreferenceRepository preferences = mock(UserPreferenceRepository.class);
     private final LinkRepository links = mock(LinkRepository.class);
@@ -40,14 +44,23 @@ class OnboardingServiceTest {
     private final AvailabilityScheduleRepository schedules = mock(AvailabilityScheduleRepository.class);
     private final RecommendationRequestRepository requests = mock(RecommendationRequestRepository.class);
     private final DateRatingRepository ratings = mock(DateRatingRepository.class);
+    private final UserRepository users = mock(UserRepository.class);
 
     private final OnboardingService service =
-            new OnboardingService(preferences, links, calendars, schedules, requests, ratings);
+            new OnboardingService(preferences, links, calendars, schedules, requests, ratings, users);
 
+    private final User ana = User.builder().id(ANA).displayName("Ana").createdAt(ANA_SIGNUP).build();
+    private final User sam = User.builder().id(SAM).displayName("Sam").createdAt(SAM_SIGNUP).build();
     private final Link link = Link.builder().id(LINK_ID).startedAt(LINKED_AT)
-            .initiatorUser(User.builder().id(ANA).displayName("Ana").build())
-            .partnerUser(User.builder().id(SAM).displayName("Sam").build())
+            .initiatorUser(ana)
+            .partnerUser(sam)
             .build();
+
+    @BeforeEach
+    void knownUsers() {
+        given(users.findById(ANA)).willReturn(Optional.of(ana));
+        given(users.findById(SAM)).willReturn(Optional.of(sam));
+    }
 
     private void linked() {
         given(links.findActiveLinkByUserId(ANA)).willReturn(Optional.of(link));
@@ -84,9 +97,18 @@ class OnboardingServiceTest {
     }
 
     @Test
-    @DisplayName("B-04 con al menos un dia de horario guardado")
-    void savedScheduleCounts() {
+    @DisplayName("B-04 los horarios que la base crea al registrarse no cuentan (trigger 9-22 h)")
+    void defaultScheduleFromSignupDoesNotCount() {
         given(schedules.findByUserId(ANA)).willReturn(List.of(new AvailabilitySchedule()));
+        given(schedules.existsSavedAfter(ANA, ANA_SIGNUP.plus(OnboardingService.SIGNUP_GRACE))).willReturn(false);
+
+        assertThat(service.progressFor(ANA).me().schedule()).isFalse();
+    }
+
+    @Test
+    @DisplayName("B-04b los horarios que la persona guarda despues del registro cuentan")
+    void scheduleSavedLaterCounts() {
+        given(schedules.existsSavedAfter(ANA, ANA_SIGNUP.plus(OnboardingService.SIGNUP_GRACE))).willReturn(true);
 
         assertThat(service.progressFor(ANA).me().schedule()).isTrue();
     }
@@ -97,11 +119,12 @@ class OnboardingServiceTest {
         linked();
         given(preferences.existsByUserId(SAM)).willReturn(true);
         given(calendars.findByUserIdAndIsActiveTrue(SAM)).willReturn(List.of(new ExternalCalendar()));
+        given(schedules.existsSavedAfter(SAM, SAM_SIGNUP.plus(OnboardingService.SIGNUP_GRACE))).willReturn(true);
 
         OnboardingProgressResponse p = service.progressFor(ANA);
 
         assertThat(p.me().linked()).isTrue();
-        assertThat(p.partner()).isEqualTo(new OnboardingProgressResponse.Partner("Sam", true, true, false));
+        assertThat(p.partner()).isEqualTo(new OnboardingProgressResponse.Partner("Sam", true, true, true));
     }
 
     @Test

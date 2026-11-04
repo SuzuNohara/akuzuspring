@@ -12,6 +12,8 @@ import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.LinkRepository;
 import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserPreferenceRepository;
+import com.nexus.repository.UserRepository;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -28,12 +30,16 @@ public class OnboardingService {
 
     private static final Couple NO_COUPLE = new Couple(false, false);
 
+    /** Margen tras el registro: las filas del trigger se crean en el mismo instante que la cuenta. */
+    static final Duration SIGNUP_GRACE = Duration.ofSeconds(30);
+
     private final UserPreferenceRepository preferences;
     private final LinkRepository links;
     private final ExternalCalendarRepository calendars;
     private final AvailabilityScheduleRepository schedules;
     private final RecommendationRequestRepository requests;
     private final DateRatingRepository ratings;
+    private final UserRepository users;
 
     /** Hitos de {@code userId}, los de su pareja (si hay vinculo activo) y los de los dos. */
     @Transactional(readOnly = true)
@@ -69,8 +75,15 @@ public class OnboardingService {
         return !calendars.findByUserIdAndIsActiveTrue(userId).isEmpty();
     }
 
-    /** No se guardan horarios por defecto: hay filas solo si la persona ya los guardo. */
+    /**
+     * Al registrarse, un trigger de la base crea horarios por defecto (9-22 h, los 7 dias): esas
+     * filas no cuentan. Cuenta si la persona guardo sus horarios despues del registro (guardar
+     * vuelve a crear las filas). El margen cubre la diferencia de reloj entre el alta y el trigger.
+     */
     private boolean schedule(Long userId) {
-        return !schedules.findByUserId(userId).isEmpty();
+        return users.findById(userId)
+                .map(User::getCreatedAt)
+                .map(signup -> schedules.existsSavedAfter(userId, signup.plus(SIGNUP_GRACE)))
+                .orElse(false);
     }
 }

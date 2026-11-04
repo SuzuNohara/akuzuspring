@@ -1,0 +1,49 @@
+# [nexus-deploy] Capa AWS: la base es la RDS del stack nexus-db, la imagen viene de ECR y los logs van a
+# CloudWatch Logs (grupos /nexus/prod/<servicio> del stack nexus-ec2). Con awslogs, Docker guarda ademas
+# una copia local, asi que `docker compose logs` sigue funcionando.
+x-awslogs: &awslogs
+  awslogs-region: ${AWS_REGION:-us-east-1}
+  awslogs-create-group: "false"
+  # Si CloudWatch no responde, se pierden lineas en vez de bloquear al contenedor.
+  mode: non-blocking
+  max-buffer-size: 4m
+
+services:
+  mysql:
+    profiles: ["local-db"]
+  backend:
+    build: !reset null
+    image: ${BACKEND_IMAGE:?Falta BACKEND_IMAGE en .env}
+    pull_policy: missing
+    depends_on: !override
+      qdrant:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://${DB_HOST:?Falta DB_HOST en .env}:3306/nexus?sslMode=REQUIRED&serverTimezone=UTC
+    logging: !override
+      driver: awslogs
+      options:
+        <<: *awslogs
+        awslogs-group: /nexus/prod/backend
+  caddy:
+    logging:
+      driver: awslogs
+      options:
+        <<: *awslogs
+        awslogs-group: /nexus/prod/caddy
+  ollama:
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+    logging:
+      driver: awslogs
+      options:
+        <<: *awslogs
+        awslogs-group: /nexus/prod/ollama
+  qdrant:
+    logging:
+      driver: awslogs
+      options:
+        <<: *awslogs
+        awslogs-group: /nexus/prod/qdrant

@@ -48,3 +48,8 @@ src/main/resources/firebase-service-account.json
 # Respaldos de la base (traen datos de cuentas)
 scripts/respaldo-*.sql
 scripts/__pycache__/
+
+# Despliegue: secretos y respaldos locales nunca entran a git
+.env
+deploy/.env
+deploy/respaldos/

@@ -1,0 +1,19 @@
+# [nexus-deploy] Capa para la EC2 con GPU (g4dn.xlarge, NVIDIA T4).
+# Requiere el driver NVIDIA y nvidia-container-toolkit en el host (los trae la AMI
+# "Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 24.04)").
+#
+# Uso:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+# Comprobar:  docker compose exec ollama nvidia-smi   y   docker compose exec ollama ollama ps
+#             (la columna PROCESSOR debe decir 100% GPU)
+services:
+  ollama:
+    environment:
+      # Ya sale "auto -> enabled" en la T4 (compute 7.5); explicito para que no dependa de la version.
+      OLLAMA_FLASH_ATTENTION: "1"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

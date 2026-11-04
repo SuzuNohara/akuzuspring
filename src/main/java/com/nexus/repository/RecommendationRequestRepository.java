@@ -19,4 +19,7 @@ public interface RecommendationRequestRepository extends JpaRepository<Recommend
     @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
     @Query("SELECT r FROM RecommendationRequest r WHERE r.id = :id")
     Optional<RecommendationRequest> findLockedById(@Param("id") Long id);
+
+    /** [primeros-pasos] Si la pareja de este vinculo ya pidio alguna recomendacion. */
+    boolean existsByLink_Id(Long linkId);
 }

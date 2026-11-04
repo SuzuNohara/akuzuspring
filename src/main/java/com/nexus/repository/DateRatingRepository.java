@@ -1,6 +1,7 @@
 package com.nexus.repository;
 
 import com.nexus.entity.DateRating;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,4 +18,7 @@ public interface DateRatingRepository extends JpaRepository<DateRating, Long> {
 
     /** [t06-cu43] Calificaciones de los dos en las citas dadas (CU43, historial de la pareja). */
     List<DateRating> findByEventIdIn(Collection<Long> eventIds);
+
+    /** [primeros-pasos] Si alguno de los dos califico una cita desde que empezo el vinculo actual. */
+    boolean existsByUserIdInAndCreatedAtGreaterThanEqual(Collection<Long> userIds, Instant since);
 }

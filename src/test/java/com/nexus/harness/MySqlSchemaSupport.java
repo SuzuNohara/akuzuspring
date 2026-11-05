@@ -34,7 +34,28 @@ public abstract class MySqlSchemaSupport {
       "db/add_fcm_token.sql",
       "db/add_availability_schedules.sql",
       "db/add_calendars_external_columns.sql",
-      "db/add_calendar_events_external_columns.sql"};
+      "db/add_calendar_events_external_columns.sql",
+      // [sync-calendario] calendars.export_events (y calendar_events.conflict_hash, que necesita
+      // add_export_events.sql antes): sin ellas ExternalCalendarRepositoryIT no inserta (rota desde
+      // 12e7b02). Aun no estan en DB_MIGRATIONS del Makefile.
+      "db/add_app_event_id.sql",
+      "db/add_export_events.sql",
+      // [primeros-pasos] R-04: DateRatingRepositoryIT. Aun no esta en DB_MIGRATIONS del Makefile.
+      "db/add_date_ratings.sql",
+      // [primeros-pasos] R-03: columna del hito de horarios y su relleno, en este orden.
+      "db/add_schedule_customized_at.sql",
+      "db/backfill_schedule_customized_at.sql"};
+
+  /**
+   * Migraciones idempotentes por si mismas (consultan information_schema, usan {@code IF NOT EXISTS}
+   * o solo tocan filas en NULL): la segunda pasada no da NINGUN error, en vez de 1050/1060/1061.
+   */
+  static final Set<String> SILENT_ON_REAPPLY =
+      Set.of(
+          "db/add_app_event_id.sql",
+          "db/add_export_events.sql",
+          "db/add_date_ratings.sql",
+          "db/backfill_schedule_customized_at.sql");
 
   /** Los tres codigos que db-migrate lee como "este objeto ya existe". */
   static final Set<String> TOLERATED = Set.of("1050", "1060", "1061");

@@ -11,7 +11,13 @@ package com.nexus.dto;
  */
 public record OnboardingProgressResponse(Mine me, Partner partner, Couple couple) {
 
-    /** Hitos individuales de quien pregunta. */
+    /**
+     * Hitos individuales de quien pregunta.
+     *
+     * <p>R-08: {@code linked} es el hito «Vincula a tu pareja» de la tarjeta y cumple siempre
+     * {@code linked == (partner != null)}. Se conserva porque el cliente lo lee como hito; si cambia
+     * cuando viaja {@code partner}, hay que cambiar los dos.
+     */
     public record Mine(boolean questionnaire, boolean linked, boolean calendar, boolean schedule) {}
 
     /** Hitos individuales de la pareja, sin detalles. */

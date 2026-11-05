@@ -6,15 +6,12 @@ import com.nexus.dto.OnboardingProgressResponse.Mine;
 import com.nexus.dto.OnboardingProgressResponse.Partner;
 import com.nexus.entity.Link;
 import com.nexus.entity.User;
-import com.nexus.repository.AvailabilityScheduleRepository;
 import com.nexus.repository.DateRatingRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.LinkRepository;
 import com.nexus.repository.RecommendationRequestRepository;
 import com.nexus.repository.UserPreferenceRepository;
 import com.nexus.repository.UserRepository;
-import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,13 +27,9 @@ public class OnboardingService {
 
     private static final Couple NO_COUPLE = new Couple(false, false);
 
-    /** Margen tras el registro: las filas del trigger se crean en el mismo instante que la cuenta. */
-    static final Duration SIGNUP_GRACE = Duration.ofSeconds(30);
-
     private final UserPreferenceRepository preferences;
     private final LinkRepository links;
     private final ExternalCalendarRepository calendars;
-    private final AvailabilityScheduleRepository schedules;
     private final RecommendationRequestRepository requests;
     private final DateRatingRepository ratings;
     private final UserRepository users;
@@ -45,26 +38,25 @@ public class OnboardingService {
     @Transactional(readOnly = true)
     public OnboardingProgressResponse progressFor(Long userId) {
         Optional<Link> link = links.findActiveLinkByUserId(userId);
-        Mine me = new Mine(questionnaire(userId), link.isPresent(), calendar(userId), schedule(userId));
         if (link.isEmpty()) {
+            // R-05: sin vinculo es el unico caso en que hay que cargar a la persona
+            boolean schedule = users.findById(userId).map(OnboardingService::schedule).orElse(false);
+            Mine me = new Mine(questionnaire(userId), false, calendar(userId), schedule);
             return new OnboardingProgressResponse(me, null, NO_COUPLE);
         }
         Link active = link.get();
-        User partner = partnerOf(active, userId);
+        // R-05: findActiveLinkByUserId ya trae a los dos con JOIN FETCH
+        boolean initiated = active.getInitiatorUser().getId().equals(userId);
+        User self = initiated ? active.getInitiatorUser() : active.getPartnerUser();
+        User partner = initiated ? active.getPartnerUser() : active.getInitiatorUser();
         Long partnerId = partner.getId();
+        Mine me = new Mine(questionnaire(userId), true, calendar(userId), schedule(self));
         Partner theirs = new Partner(partner.getDisplayName(),
-                questionnaire(partnerId), calendar(partnerId), schedule(partnerId));
-        // Solo cuenta lo de este vinculo: una calificacion de antes de vincularse no es de esta pareja.
+                questionnaire(partnerId), calendar(partnerId), schedule(partner));
         Couple couple = new Couple(
                 requests.existsByLink_Id(active.getId()),
-                ratings.existsByUserIdInAndCreatedAtGreaterThanEqual(
-                        List.of(userId, partnerId), active.getStartedAt()));
+                ratings.existsForLink(active.getId()));
         return new OnboardingProgressResponse(me, theirs, couple);
-    }
-
-    private static User partnerOf(Link link, Long userId) {
-        User initiator = link.getInitiatorUser();
-        return initiator.getId().equals(userId) ? link.getPartnerUser() : initiator;
     }
 
     private boolean questionnaire(Long userId) {
@@ -72,18 +64,14 @@ public class OnboardingService {
     }
 
     private boolean calendar(Long userId) {
-        return !calendars.findByUserIdAndIsActiveTrue(userId).isEmpty();
+        return calendars.existsActiveByUserId(userId);
     }
 
     /**
-     * Al registrarse, un trigger de la base crea horarios por defecto (9-22 h, los 7 dias): esas
-     * filas no cuentan. Cuenta si la persona guardo sus horarios despues del registro (guardar
-     * vuelve a crear las filas). El margen cubre la diferencia de reloj entre el alta y el trigger.
+     * R-03: cuenta si la persona guardo sus horarios alguna vez ({@code users.schedule_customized_at},
+     * lo pone {@code AvailabilityService.saveUserSchedule}). Los de fabrica del trigger no lo ponen.
      */
-    private boolean schedule(Long userId) {
-        return users.findById(userId)
-                .map(User::getCreatedAt)
-                .map(signup -> schedules.existsSavedAfter(userId, signup.plus(SIGNUP_GRACE)))
-                .orElse(false);
+    private static boolean schedule(User user) {
+        return user.getScheduleCustomizedAt() != null;
     }
 }

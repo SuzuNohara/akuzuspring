@@ -10,6 +10,7 @@ import com.nexus.repository.EventExceptionRepository;
 import com.nexus.repository.EventRepository;
 import com.nexus.repository.ExternalCalendarRepository;
 import com.nexus.repository.ExternalEventRepository;
+import com.nexus.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +36,9 @@ public class AvailabilityService {
 
     @Autowired
     private EventExceptionRepository eventExceptionRepository;
+
+    @Autowired
+    private UserRepository userRepository;
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
     private static final ZoneId MEXICO_ZONE = ZoneId.of("America/Mexico_City");
@@ -548,7 +552,9 @@ public class AvailabilityService {
         
         // Guardar nueva configuración
         List<AvailabilitySchedule> saved = availabilityScheduleRepository.saveAll(schedules);
-        
+        // [primeros-pasos] R-03: deja constancia explicita de que ya no son los horarios de fabrica
+        userRepository.markScheduleCustomized(userId, Instant.now());
+
         System.out.println("✅ Horarios guardados correctamente en BD");
         return saved.stream()
             .map(AvailabilityScheduleDTO::fromEntity)

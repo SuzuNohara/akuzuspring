@@ -29,6 +29,11 @@ class MigrationIdempotenceIT extends MySqlSchemaSupport {
     // When: se vuelve a aplicar con la misma semantica que db-migrate
     List<String> codes = applyMigration(MYSQL, migrationPath(index, file));
     // Then: hubo errores (si no, la primera pasada no aplico nada) y todos son "ya existe"
+    if (SILENT_ON_REAPPLY.contains(file)) {
+      // Idempotente por si misma: la segunda pasada no da ningun error
+      assertThat(codes).isEmpty();
+      return;
+    }
     assertThat(codes).isNotEmpty();
     assertThat(codes).allSatisfy(code -> assertThat(TOLERATED).contains(code));
   }

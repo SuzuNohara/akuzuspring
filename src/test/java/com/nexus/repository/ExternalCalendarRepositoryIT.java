@@ -119,4 +119,21 @@ class ExternalCalendarRepositoryIT extends MySqlSchemaSupport {
         .extracting(ExternalCalendar::getDeviceCalendarId)
         .containsExactly(active.getDeviceCalendarId());
   }
+
+  @Test
+  @DisplayName("[primeros-pasos] R-06: should say active only for a live active calendar")
+  void shouldSayActiveOnlyForLiveActiveCalendar() {
+    // Given: una persona solo con un calendario desvinculado y otro borrado en suave
+    User user = TestUsers.persist(em, "r06@prueba.test");
+    ExternalCalendar unlinked = TestCalendars.persist(em, user.getId());
+    unlinked.setIsActive(false);
+    ExternalCalendar deleted = TestCalendars.persist(em, user.getId());
+    deleted.setDeletedAt(Instant.parse("2026-09-16T00:00:00Z"));
+    em.flush();
+
+    // Then: no cuenta; con un calendario vivo y activo, si
+    assertThat(repository.existsActiveByUserId(user.getId())).isFalse();
+    TestCalendars.persist(em, user.getId());
+    assertThat(repository.existsActiveByUserId(user.getId())).isTrue();
+  }
 }

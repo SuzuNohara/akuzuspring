@@ -31,14 +31,6 @@ public interface AvailabilityScheduleRepository extends JpaRepository<Availabili
     Optional<AvailabilitySchedule> findByUserIdAndDayOfWeek(Long userId, AvailabilitySchedule.DayOfWeek dayOfWeek);
 
     /**
-     * [primeros-pasos] Si la persona guardó sus horarios después de {@code after}. Al registrarse,
-     * el trigger {@code after_user_insert_create_default_schedule} crea 9-22 h los 7 días; guardar en
-     * "Horarios permitidos" borra y vuelve a crear las filas, así que su created_at es posterior.
-     */
-    @Query("SELECT COUNT(a) > 0 FROM AvailabilitySchedule a WHERE a.user.id = :userId AND a.createdAt > :after")
-    boolean existsSavedAfter(@Param("userId") Long userId, @Param("after") java.time.Instant after);
-
-    /**
      * Eliminar todos los horarios de un usuario
      */
     @Modifying

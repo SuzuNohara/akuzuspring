@@ -47,4 +47,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Transactional
     @Query("UPDATE User u SET u.fcmToken = NULL WHERE u.id = :userId")
     int clearToken(@Param("userId") Long userId);
+
+    /** [primeros-pasos] R-03: la persona guardo sus horarios; el hito «Ajusta tus horarios» queda hecho. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE User u SET u.scheduleCustomizedAt = :at WHERE u.id = :userId")
+    int markScheduleCustomized(@Param("userId") Long userId, @Param("at") java.time.Instant at);
 }

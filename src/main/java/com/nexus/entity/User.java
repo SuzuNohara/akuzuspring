@@ -78,6 +78,13 @@ public class User {
     @Column(name = "account_status", nullable = false, length = 30)
     private AccountStatus accountStatus = AccountStatus.PENDING_VERIFICATION;
     
+    /**
+     * [primeros-pasos] R-03: ultima vez que la persona guardo sus horarios. {@code null} = sigue con
+     * los de fabrica que crea el trigger al registrarse. Lo pone {@code UserRepository#markScheduleCustomized}.
+     */
+    @Column(name = "schedule_customized_at")
+    private Instant scheduleCustomizedAt;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

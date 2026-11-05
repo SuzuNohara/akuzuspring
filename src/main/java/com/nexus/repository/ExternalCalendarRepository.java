@@ -15,7 +15,11 @@ public interface ExternalCalendarRepository extends JpaRepository<ExternalCalend
     
     @Query("SELECT c FROM ExternalCalendar c WHERE c.userId = :userId AND c.isActive = true AND c.deletedAt IS NULL")
     List<ExternalCalendar> findByUserIdAndIsActiveTrue(Long userId);
-    
+
+    /** [primeros-pasos] R-06: si hay algun calendario activo, con los mismos filtros que la lista de arriba. */
+    @Query("SELECT COUNT(c) > 0 FROM ExternalCalendar c WHERE c.userId = :userId AND c.isActive = true AND c.deletedAt IS NULL")
+    boolean existsActiveByUserId(Long userId);
+
     @Query("SELECT c FROM ExternalCalendar c WHERE c.userId = :userId AND c.syncEnabled = true AND c.deletedAt IS NULL")
     List<ExternalCalendar> findByUserIdAndSyncEnabledTrue(Long userId);
     

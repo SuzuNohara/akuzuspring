@@ -1449,6 +1449,7 @@ CREATE TABLE `users` (
   `terms_accepted` tinyint(1) NOT NULL DEFAULT '0',
   `terms_accepted_at` datetime(3) DEFAULT NULL,
   `account_status` varchar(30) NOT NULL DEFAULT 'PENDING_VERIFICATION',
+  `schedule_customized_at` datetime(3) DEFAULT NULL,
   `created_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   `deleted_at` datetime(3) DEFAULT NULL,

@@ -280,19 +280,24 @@ public class EventService {
         Event event = eventRepository.findByIdAndUserId(eventId, userId)
             .orElseThrow(() -> new ResourceNotFoundException("Evento no encontrado"));
         
-        // Verificar que el usuario no es el creador
-        if (event.getCreator().getId().equals(userId)) {
+        // [reaprobar-edicion] RN-17: aprueba quien falta, sea o no el creador (tras editar, el creador
+        // puede ser quien tiene que volver a aprobar). Antes solo podía aprobar quien no lo creó.
+        boolean isCreator = event.getCreator().getId().equals(userId);
+        if (isCreator && Boolean.TRUE.equals(event.getCreatorApproved())) {
             throw new BadRequestException("No puedes aprobar tu propio evento");
         }
-        
-        // Verificar que el evento está pendiente
-        if (event.getPartnerApproved()) {
+        if (!isCreator && Boolean.TRUE.equals(event.getPartnerApproved())) {
             throw new BadRequestException("Este evento ya ha sido aprobado");
         }
-        
+
         // Aprobar el evento
-        event.setPartnerApproved(true);
-        event.setPartnerApprovedAt(Instant.now());
+        if (isCreator) {
+            event.setCreatorApproved(true);
+            event.setCreatorApprovedAt(Instant.now());
+        } else {
+            event.setPartnerApproved(true);
+            event.setPartnerApprovedAt(Instant.now());
+        }
         
         // Actualizar status: si ambos aprobaron, CONFIRMED, sino PENDING
         if (event.isFullyApproved()) {
@@ -305,11 +310,11 @@ public class EventService {
         
         log.info("Evento {} aprobado por usuario {}", eventId, userId);
         
-        // Enviar notificación al creador
+        // Avisar a la otra persona del vínculo (quien lo propuso o lo editó)
         try {
-            User creator = savedEvent.getCreator();
-            appNotifications.notify(creator.getId(), null, NoticeTypes.EVENT_CONFIRMED, "¡Dijo que sí!",
-                partnerNameOf(savedEvent, creator.getId()) + " aceptó \"" + savedEvent.getTitle()
+            User other = getPartnerUser(savedEvent.getLink(), userId);
+            appNotifications.notify(other.getId(), null, NoticeTypes.EVENT_CONFIRMED, "¡Dijo que sí!",
+                partnerNameOf(savedEvent, other.getId()) + " aceptó \"" + savedEvent.getTitle()
                         + "\". Ya está en su calendario.");
         } catch (Exception e) {
             log.warn("Error enviando notificación de confirmación: {}", e.getMessage());
@@ -512,21 +517,26 @@ public class EventService {
         Event event = eventRepository.findByIdAndUserId(eventId, userId)
             .orElseThrow(() -> new ResourceNotFoundException("Evento no encontrado"));
         
-        // 2. Verificar que el usuario no es el creador
-        if (event.getCreator().getId().equals(userId)) {
+        // 2. [reaprobar-edicion] Rechaza quien tiene que aprobar: quien no lo creó o, si la pareja lo
+        // editó, el creador. Quien ya lo aprobó (lo propuso o lo editó) no puede rechazarlo.
+        boolean isCreator = event.getCreator().getId().equals(userId);
+        boolean alreadyApprovedByMe = isCreator
+            ? Boolean.TRUE.equals(event.getCreatorApproved())
+            : Boolean.TRUE.equals(event.getPartnerApproved()) && event.getStatus() != EventStatus.CONFIRMED;
+        if (alreadyApprovedByMe) {
             throw new BadRequestException("No puedes rechazar tu propio evento");
         }
-        
+
         // 3. Verificar que el evento no está ya rechazado
         if (event.getStatus() == EventStatus.REJECTED) {
             throw new BadRequestException("Este evento ya ha sido rechazado");
         }
-        
-        // 4. Guardar información del creador para notificación (antes de limpiar caché)
-        User creator = event.getCreator();
+
+        // 4. Guardar a quién avisar (la otra persona del vínculo) antes de limpiar caché
+        User other = getPartnerUser(event.getLink(), userId);
         String eventTitle = event.getTitle();
-        Long creatorId = creator.getId();
-        String rejectedBy = partnerNameOf(event, creatorId);
+        Long otherId = other.getId();
+        String rejectedBy = partnerNameOf(event, otherId);
         
         // 5. Ejecutar UPDATE nativo SQL (bypass completo de JPA/Hibernate)
         log.info("Ejecutando UPDATE nativo para cambiar status a REJECTED");
@@ -554,9 +564,9 @@ public class EventService {
         
         // 8. Enviar notificación al creador
         try {
-            appNotifications.notify(creatorId, null, NoticeTypes.EVENT_REJECTED, "Esta vez no se pudo",
+            appNotifications.notify(otherId, null, NoticeTypes.EVENT_REJECTED, "Esta vez no se pudo",
                 rejectedBy + " no aceptó \"" + eventTitle + "\". Pueden buscar otro momento.");
-            log.info("Aviso de rechazo para usuario ID {}", creatorId);
+            log.info("Aviso de rechazo para usuario ID {}", otherId);
         } catch (Exception e) {
             log.warn("Error enviando notificación de rechazo: {}", e.getMessage());
         }

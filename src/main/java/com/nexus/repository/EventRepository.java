@@ -89,9 +89,10 @@ public interface EventRepository extends JpaRepository<Event, Long> {
            "WHERE e.deletedAt IS NULL AND " +
            "e.status = 'PENDING' AND " +
            "e.link IS NOT NULL AND " +
-           "e.partnerApproved = false AND " +
-           "((e.link.initiatorUser.id = :userId AND e.creator.id != :userId) OR " +
-           "(e.link.partnerUser.id = :userId AND e.creator.id != :userId)) " +
+           "(e.link.initiatorUser.id = :userId OR e.link.partnerUser.id = :userId) AND " +
+           // [reaprobar-edicion] Le falta aprobar: al que no lo creó, o al creador si la pareja lo editó
+           "((e.creator.id != :userId AND e.partnerApproved = false) OR " +
+           "(e.creator.id = :userId AND e.creatorApproved = false)) " +
            "ORDER BY e.createdAt DESC")
     List<Event> findPendingApprovalByUserId(@Param("userId") Long userId);
     
@@ -133,9 +134,9 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     // Contar eventos pendientes para un usuario
     @Query("SELECT COUNT(e) FROM Event e WHERE e.deletedAt IS NULL AND " +
            "e.status = 'PENDING' AND " +
-           "e.partnerApproved = false AND " +
-           "((e.link.initiatorUser.id = :userId AND e.creator.id != :userId) OR " +
-           "(e.link.partnerUser.id = :userId AND e.creator.id != :userId))")
+           "(e.link.initiatorUser.id = :userId OR e.link.partnerUser.id = :userId) AND " +
+           "((e.creator.id != :userId AND e.partnerApproved = false) OR " +
+           "(e.creator.id = :userId AND e.creatorApproved = false))")
     long countPendingApprovalByUserId(@Param("userId") Long userId);
     
     // Buscar eventos recurrentes activos

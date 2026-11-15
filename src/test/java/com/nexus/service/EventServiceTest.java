@@ -281,6 +281,64 @@ class EventServiceTest {
                 "Ana quitó \"Cena\".");
     }
 
+    // ---------------------------------------------------------------- [reaprobar-edicion]
+    // RN-17: tras editar, aprueba quien NO editó, sea o no el creador.
+
+    private Event editedByThePartner() {
+        return event().status(EventStatus.PENDING).creatorApproved(false).partnerApproved(true).build();
+    }
+
+    @Test
+    @DisplayName("[reaprobar-edicion] the creator can approve an event the partner edited")
+    void theCreatorCanApproveAnEventThePartnerEdited() {
+        Event edited = editedByThePartner();
+        given(eventRepository.findByIdAndUserId(EVENT_ID, CREATOR_ID)).willReturn(Optional.of(edited));
+        givenSaveReturnsTheSameEvent();
+
+        EventResponse response = service.approveEvent(CREATOR_ID, EVENT_ID);
+
+        assertThat(edited.getCreatorApproved()).isTrue();
+        assertThat(edited.getStatus()).isEqualTo(EventStatus.CONFIRMED);
+        assertThat(response).isNotNull();
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_CONFIRMED, "¡Dijo que sí!",
+                "Ana aceptó \"Cena\". Ya está en su calendario.");
+    }
+
+    @Test
+    @DisplayName("[reaprobar-edicion] the partner cannot approve again an event they edited")
+    void thePartnerCannotApproveTheirOwnEdit() {
+        given(eventRepository.findByIdAndUserId(EVENT_ID, PARTNER_ID)).willReturn(Optional.of(editedByThePartner()));
+
+        assertThatThrownBy(() -> service.approveEvent(PARTNER_ID, EVENT_ID))
+                .isInstanceOf(BadRequestException.class);
+        verify(eventRepository, never()).save(any(Event.class));
+    }
+
+    @Test
+    @DisplayName("[reaprobar-edicion] the creator can reject an event the partner edited, and the partner is told")
+    void theCreatorCanRejectAnEventThePartnerEdited() {
+        given(eventRepository.findByIdAndUserId(EVENT_ID, CREATOR_ID)).willReturn(Optional.of(editedByThePartner()));
+        given(eventRepository.updateEventStatus(EVENT_ID)).willReturn(1);
+        EntityManager entityManager = mock(EntityManager.class);
+        given(entityManager.find(Event.class, EVENT_ID)).willReturn(event().status(EventStatus.REJECTED).build());
+        ReflectionTestUtils.setField(service, "entityManager", entityManager);
+
+        service.rejectEvent(CREATOR_ID, EVENT_ID);
+
+        verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_REJECTED, "Esta vez no se pudo",
+                "Ana no aceptó \"Cena\". Pueden buscar otro momento.");
+    }
+
+    @Test
+    @DisplayName("[reaprobar-edicion] the partner cannot reject an event they are not asked to approve")
+    void thePartnerCannotRejectTheirOwnEdit() {
+        given(eventRepository.findByIdAndUserId(EVENT_ID, PARTNER_ID)).willReturn(Optional.of(editedByThePartner()));
+
+        assertThatThrownBy(() -> service.rejectEvent(PARTNER_ID, EVENT_ID))
+                .isInstanceOf(BadRequestException.class);
+        verify(eventRepository, never()).updateEventStatus(any());
+    }
+
     // ---------------------------------------------------------------- [eventos-sin-choques]
 
     private void givenBusy(long userId, Instant start, Duration length) {

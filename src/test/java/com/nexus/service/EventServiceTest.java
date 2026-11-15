@@ -47,13 +47,17 @@ class EventServiceTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final AppNotificationService appNotifications = mock(AppNotificationService.class);
 
+    // [eventos-sin-choques] Sin configurar devuelve listas vacías: nadie está ocupado.
+    private final BusyTimeService busyTimes = mock(BusyTimeService.class);
+
     private final EventService service =
             new EventService(
                     eventRepository,
                     linkRepository,
                     userRepository,
                     appNotifications,
-                    mock(EventExceptionRepository.class));
+                    mock(EventExceptionRepository.class),
+                    busyTimes);
 
     private final User creator = User.builder().id(CREATOR_ID).displayName("Ana").build();
     private final User partner = User.builder().id(PARTNER_ID).displayName("Luis").build();
@@ -275,5 +279,128 @@ class EventServiceTest {
 
         verify(appNotifications).notify(PARTNER_ID, null, NoticeTypes.EVENT_DELETED, "Un plan menos en el calendario",
                 "Ana quitó \"Cena\".");
+    }
+
+    // ---------------------------------------------------------------- [eventos-sin-choques]
+
+    private void givenBusy(long userId, Instant start, Duration length) {
+        given(busyTimes.busyIntervals(org.mockito.ArgumentMatchers.eq(userId), any(), any(), any()))
+                .willReturn(java.util.List.of(new BusyTimeService.Interval(start, start.plus(length))));
+    }
+
+    private Instant startOf(CreateEventRequest request) {
+        return Instant.parse(request.getStartDateTime());
+    }
+
+    private void givenCreatorCanCreate() {
+        given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));
+        given(linkRepository.findActiveLinkByUserId(CREATOR_ID)).willReturn(Optional.of(link));
+        givenSaveReturnsTheSameEvent();
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] should not create an event over the creator's busy time")
+    void shouldNotCreateOverTheCreatorsBusyTime() {
+        givenCreatorCanCreate();
+        CreateEventRequest request = tomorrowForTwoHours();
+        givenBusy(CREATOR_ID, startOf(request).plus(Duration.ofMinutes(30)), Duration.ofHours(1));
+
+        assertThatThrownBy(() -> service.createEvent(CREATOR_ID, request))
+                .isInstanceOf(com.nexus.exception.ConflictException.class)
+                .hasMessage("Ya tienes algo a esa hora. Elige otro horario.");
+        verify(eventRepository, never()).save(any(Event.class));
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] should not create an event over the partner's busy time, without saying what it is (RN-19)")
+    void shouldNotCreateOverThePartnersBusyTime() {
+        givenCreatorCanCreate();
+        CreateEventRequest request = tomorrowForTwoHours();
+        givenBusy(PARTNER_ID, startOf(request), Duration.ofHours(3));
+
+        assertThatThrownBy(() -> service.createEvent(CREATOR_ID, request))
+                .isInstanceOf(com.nexus.exception.ConflictException.class)
+                .hasMessage("Luis ya tiene algo a esa hora. Elige otro horario.");
+        verify(eventRepository, never()).save(any(Event.class));
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] should say both are busy when both are")
+    void shouldSayBothAreBusy() {
+        givenCreatorCanCreate();
+        CreateEventRequest request = tomorrowForTwoHours();
+        givenBusy(CREATOR_ID, startOf(request), Duration.ofHours(1));
+        givenBusy(PARTNER_ID, startOf(request), Duration.ofHours(1));
+
+        assertThatThrownBy(() -> service.createEvent(CREATOR_ID, request))
+                .hasMessage("Los dos tienen algo a esa hora. Elige otro horario.");
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] should create the event when it only touches another one")
+    void shouldCreateWhenItOnlyTouchesAnotherEvent() {
+        givenCreatorCanCreate();
+        CreateEventRequest request = tomorrowForTwoHours();
+        givenBusy(CREATOR_ID, startOf(request).minus(Duration.ofHours(1)), Duration.ofHours(1));
+
+        service.createEvent(CREATOR_ID, request);
+
+        verify(eventRepository).save(any(Event.class));
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] a repeating event is checked on its repetitions of the next 4 weeks")
+    void shouldCheckTheRepetitionsOfARepeatingEvent() {
+        givenCreatorCanCreate();
+        CreateEventRequest request = tomorrowForTwoHours();
+        request.setIsRecurring(true);
+        request.setRecurrencePattern("WEEKLY");
+        Instant thirdWeek = startOf(request).plus(Duration.ofDays(14));
+        givenBusy(PARTNER_ID, thirdWeek, Duration.ofHours(1));
+
+        assertThatThrownBy(() -> service.createEvent(CREATOR_ID, request))
+                .isInstanceOf(com.nexus.exception.ConflictException.class)
+                .hasMessageStartingWith("Luis ya tiene algo a esa hora el ");
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] moving an event onto busy time is rejected; the event itself is ignored")
+    void shouldNotMoveAnEventOntoBusyTime() {
+        Event confirmed = event().status(EventStatus.CONFIRMED).creatorApproved(true).partnerApproved(true)
+                .startDateTime(Instant.now().plus(Duration.ofDays(2)))
+                .endDateTime(Instant.now().plus(Duration.ofDays(2)).plus(Duration.ofHours(1))).build();
+        given(eventRepository.findById(EVENT_ID)).willReturn(Optional.of(confirmed));
+        given(userRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+        Instant newStart = Instant.now().plus(Duration.ofDays(3));
+        givenBusy(PARTNER_ID, newStart, Duration.ofHours(1));
+        UpdateEventRequest request = new UpdateEventRequest();
+        request.setStartDateTime(newStart.toString());
+        request.setEndDateTime(newStart.plus(Duration.ofHours(1)).toString());
+
+        assertThatThrownBy(() -> service.updateEvent(EVENT_ID, CREATOR_ID, request))
+                .isInstanceOf(com.nexus.exception.ConflictException.class);
+        verify(eventRepository, never()).save(any(Event.class));
+        verify(busyTimes).busyIntervals(org.mockito.ArgumentMatchers.eq(PARTNER_ID), any(), any(),
+                org.mockito.ArgumentMatchers.eq(EVENT_ID));
+    }
+
+    @Test
+    @DisplayName("[eventos-sin-choques] editing only the title does not check busy time")
+    void shouldNotCheckBusyTimeWhenTheTimeDidNotChange() {
+        Instant start = Instant.now().plus(Duration.ofDays(2));
+        Event confirmed = event().status(EventStatus.CONFIRMED).creatorApproved(true).partnerApproved(true)
+                .startDateTime(start).endDateTime(start.plus(Duration.ofHours(1))).build();
+        given(eventRepository.findById(EVENT_ID)).willReturn(Optional.of(confirmed));
+        given(userRepository.findById(CREATOR_ID)).willReturn(Optional.of(creator));
+        givenSaveReturnsTheSameEvent();
+        givenBusy(PARTNER_ID, start, Duration.ofHours(1));
+        UpdateEventRequest request = new UpdateEventRequest();
+        request.setTitle("Cena especial");
+        request.setStartDateTime(start.toString());
+        request.setEndDateTime(start.plus(Duration.ofHours(1)).toString());
+
+        service.updateEvent(EVENT_ID, CREATOR_ID, request);
+
+        verify(eventRepository).save(any(Event.class));
     }
 }

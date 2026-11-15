@@ -47,7 +47,15 @@ public class EventService {
     private final UserRepository userRepository;
     private final AppNotificationService appNotifications;
     private final EventExceptionRepository eventExceptionRepository;
-    
+    private final BusyTimeService busyTimes;
+
+    /** [eventos-sin-choques] D4: un plan que se repite se revisa en sus repeticiones de las próximas 4 semanas. */
+    private static final java.time.Duration REPEAT_HORIZON = java.time.Duration.ofDays(28);
+    private static final java.time.ZoneId MEXICO_ZONE = java.time.ZoneId.of("America/Mexico_City");
+    private static final java.time.format.DateTimeFormatter CLASH_DAY =
+        java.time.format.DateTimeFormatter.ofPattern("EEE d 'de' MMMM", java.util.Locale.forLanguageTag("es-MX"))
+            .withZone(MEXICO_ZONE);
+
     @PersistenceContext
     private EntityManager entityManager;
     
@@ -70,7 +78,11 @@ public class EventService {
         // 4. Convertir fechas de String ISO 8601 a Instant
         Instant startInstant = Instant.parse(request.getStartDateTime());
         Instant endInstant = Instant.parse(request.getEndDateTime());
-        
+
+        // 4.1. [eventos-sin-choques] Ninguno de los dos puede estar ocupado a esa hora
+        requireBothFree(creator, getPartnerUser(activeLink, userId), startInstant, endInstant,
+            Boolean.TRUE.equals(request.getIsRecurring()), request.getRecurrencePattern(), null);
+
         // 5. Crear el evento
         Event event = Event.builder()
             .title(request.getTitle())
@@ -175,6 +187,42 @@ public class EventService {
         }
     }
     
+    /**
+     * [eventos-sin-choques] Rechaza el plan (409) si choca con algo de quien lo crea o edita, o de su
+     * pareja. RN-19: el mensaje dice quién está ocupado, nunca qué tiene.
+     *
+     * @param ignoreEventId el plan que se está editando, que no choca consigo mismo; null al crear
+     */
+    private void requireBothFree(User me, User partner, Instant start, Instant end,
+                                 boolean recurring, String pattern, Long ignoreEventId) {
+        java.time.Duration length = java.time.Duration.between(start, end);
+        List<Instant> starts = recurring
+            ? com.nexus.backend.service.RecurrenceExpander.occurrences(start, BusyTimeService.toRrule(pattern),
+                null, null, start, start.plus(REPEAT_HORIZON), MEXICO_ZONE)
+            : List.of(start);
+        if (starts.isEmpty()) return;
+        Instant to = starts.get(starts.size() - 1).plus(length);
+
+        List<BusyTimeService.Interval> mine = busyTimes.busyIntervals(me.getId(), start, to, ignoreEventId);
+        List<BusyTimeService.Interval> theirs = partner == null
+            ? List.of()
+            : busyTimes.busyIntervals(partner.getId(), start, to, ignoreEventId);
+
+        for (int i = 0; i < starts.size(); i++) {
+            Instant s = starts.get(i);
+            Instant e = s.plus(length);
+            boolean meBusy = mine.stream().anyMatch(b -> b.overlaps(s, e));
+            boolean partnerBusy = theirs.stream().anyMatch(b -> b.overlaps(s, e));
+            if (!meBusy && !partnerBusy) continue;
+
+            String who = meBusy && partnerBusy ? "Los dos tienen algo a esa hora"
+                : meBusy ? "Ya tienes algo a esa hora"
+                : nameOf(partner) + " ya tiene algo a esa hora";
+            String when = i == 0 ? "" : " el " + CLASH_DAY.format(s);
+            throw new com.nexus.exception.ConflictException(who + when + ". Elige otro horario.");
+        }
+    }
+
     /** Nombre que ve la pareja en los avisos: el nombre, o el apodo si no hay nombre. */
     private static String nameOf(User user) {
         return user.getDisplayName() != null ? user.getDisplayName() : user.getNickname();
@@ -344,6 +392,20 @@ public class EventService {
             throw new ForbiddenException("No tienes permiso para editar este evento");
         }
         
+        // [eventos-sin-choques] Si cambia cuándo es, ninguno de los dos puede estar ocupado (sin contar este plan)
+        Instant newStart = request.getStartDateTime() != null ? Instant.parse(request.getStartDateTime()) : event.getStartDateTime();
+        Instant newEnd = request.getEndDateTime() != null ? Instant.parse(request.getEndDateTime()) : event.getEndDateTime();
+        Boolean newRecurring = request.getIsRecurring() != null ? request.getIsRecurring() : event.getIsRecurring();
+        String newPattern = request.getRecurrencePattern() != null ? request.getRecurrencePattern() : event.getRecurrencePattern();
+        boolean timeChanged = !java.util.Objects.equals(newStart, event.getStartDateTime())
+            || !java.util.Objects.equals(newEnd, event.getEndDateTime())
+            || !java.util.Objects.equals(newRecurring, event.getIsRecurring())
+            || !java.util.Objects.equals(newPattern, event.getRecurrencePattern());
+        if (timeChanged && newStart != null && newEnd != null) {
+            requireBothFree(user, getPartnerUser(link, userId), newStart, newEnd,
+                Boolean.TRUE.equals(newRecurring), newPattern, event.getId());
+        }
+
         // Determinar si se están modificando campos que requieren re-aprobación
         boolean requiresReapproval = false;
         

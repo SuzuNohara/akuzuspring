@@ -173,6 +173,42 @@ class LinkServiceTest {
     }
 
     @Test
+    @DisplayName("[foto-pareja] the partner photo is the relative avatar path, not a fixed LAN address")
+    void shouldGiveThePartnerPhotoAsARelativePath() {
+        partner.setProfile(com.nexus.entity.UserProfile.builder().avatarBytes(new byte[] {1}).build());
+        Link link = Link.builder().id(1L).initiatorUser(generator).partnerUser(partner).isActive(true)
+                .startedAt(Instant.now()).build();
+        given(linkRepository.findActiveLinkByUserId(GENERATOR_ID)).willReturn(Optional.of(link));
+
+        LinkStatusResponse response = service.getLinkStatus(GENERATOR_ID);
+
+        assertThat(response.getPartner().getProfilePhoto()).isEqualTo("/api/profile/9/avatar");
+    }
+
+    @Test
+    @DisplayName("[foto-pareja] linking returns the code owner's photo as the relative avatar path")
+    void shouldGiveTheCodeOwnerPhotoAsARelativePathWhenLinking() {
+        givenBothUsersExist();
+        generator.setProfile(com.nexus.entity.UserProfile.builder().avatarBytes(new byte[] {1}).build());
+        given(linkCodeRepository.findByCode(CODE))
+                .willReturn(Optional.of(codeFromGenerator(Instant.now().plusSeconds(300), false)));
+
+        LinkStatusResponse response = service.establishLink(PARTNER_ID, CODE);
+
+        assertThat(response.getPartner().getProfilePhoto()).isEqualTo("/api/profile/4/avatar");
+    }
+
+    @Test
+    @DisplayName("[foto-pareja] without a photo the partner has no profilePhoto")
+    void shouldGiveNoPartnerPhotoWhenThereIsNone() {
+        Link link = Link.builder().id(1L).initiatorUser(generator).partnerUser(partner).isActive(true)
+                .startedAt(Instant.now()).build();
+        given(linkRepository.findActiveLinkByUserId(GENERATOR_ID)).willReturn(Optional.of(link));
+
+        assertThat(service.getLinkStatus(GENERATOR_ID).getPartner().getProfilePhoto()).isNull();
+    }
+
+    @Test
     @DisplayName("should tell the partner before deleting the link and report it as sent (RN-12)")
     void shouldTellThePartnerBeforeDeletingTheLinkAndReportItAsSent() {
         Link link = Link.builder().id(1L).initiatorUser(generator).partnerUser(partner).isActive(true).build();

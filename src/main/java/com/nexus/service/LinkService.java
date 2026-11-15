@@ -160,9 +160,7 @@ public class LinkService {
         
         // Retornar información del vínculo establecido
         User partner = linkCode.getGeneratedByUser();
-        String profilePhotoUrl = (partner.getProfile() != null && partner.getProfile().getAvatarBytes() != null)
-                ? "http://192.168.1.95:8080/api/profile/" + partner.getId() + "/avatar"
-                : null;
+        String profilePhotoUrl = avatarPathOf(partner);
         
         LinkStatusResponse.PartnerInfo partnerInfo = LinkStatusResponse.PartnerInfo.builder()
                 .userId(partner.getId())
@@ -193,10 +191,8 @@ public class LinkService {
         
         Link link = activeLink.get();
         User partner = link.getInitiatorUser().getId().equals(userId) ? link.getPartnerUser() : link.getInitiatorUser();
-        
-        String profilePhotoUrl = (partner.getProfile() != null && partner.getProfile().getAvatarBytes() != null)
-                ? "http://192.168.1.95:8080/api/profile/" + partner.getId() + "/avatar"
-                : null;
+
+        String profilePhotoUrl = avatarPathOf(partner);
         
         LinkStatusResponse.PartnerInfo partnerInfo = LinkStatusResponse.PartnerInfo.builder()
                 .userId(partner.getId())
@@ -212,6 +208,16 @@ public class LinkService {
                 .build();
     }
     
+    /**
+     * [foto-pareja] Ruta relativa del avatar (la misma que devuelve UserService al subirlo), o null si
+     * no tiene foto. Antes llevaba una IP fija de la red de desarrollo que no existe en Docker ni en AWS;
+     * la app solo usa el campo para saber si hay foto y la pide con su sesión.
+     */
+    private static String avatarPathOf(User user) {
+        boolean hasPhoto = user.getProfile() != null && user.getProfile().getAvatarBytes() != null;
+        return hasPhoto ? "/api/profile/" + user.getId() + "/avatar" : null;
+    }
+
     /**
      * Generar un código único que no exista en la base de datos
      */

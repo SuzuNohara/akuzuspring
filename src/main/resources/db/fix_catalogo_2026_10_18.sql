@@ -4,9 +4,9 @@
 
 SET NAMES utf8mb4;
 
--- H14: preferencia duplicada. "Paseos en parques" vive en Ambiental; la de Social quedo con un "1"
--- al cargarse. En Social se llama "Parques" (lugar favorito), sin chocar con la de Ambiental.
-UPDATE `nexus`.`preferences` SET name = 'Parques' WHERE name = 'Paseos en parques 1';
+-- H14: la de Social quedo con un "1" al cargarse. Se llama igual que la de Ambiental (son categorias
+-- distintas) y el cuestionario la pone en "Planes para salir". [paseos-en-parques] 15-nov
+UPDATE `nexus`.`preferences` SET name = 'Paseos en Parques' WHERE category_id = 3 AND name IN ('Paseos en parques 1', 'Parques');
 
 -- H23: nombres de lugares tal como vienen de OpenStreetMap, con errores de captura.
 UPDATE `nexus`.`places` SET name = 'Cardio Fitness Santa Fe' WHERE slug = 'alvaro-obregon-cardio-fitness-santa-nfe';

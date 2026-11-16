@@ -214,4 +214,37 @@ class UserServiceTest {
         assertThat(logged.getFailedLoginAttempts()).isZero();
         assertThat(logged.getLastLoginAt()).isNotNull();
     }
+
+    // ---------------------------------------------------------------- [eliminar-cuenta]
+
+    private static com.nexus.dto.DeleteAccountRequest deleteRequest(String password) {
+        com.nexus.dto.DeleteAccountRequest r = new com.nexus.dto.DeleteAccountRequest();
+        r.setPassword(password);
+        return r;
+    }
+
+    @Test
+    @DisplayName("[eliminar-cuenta] con calendario conectado y todo configurado, borra lo que bloqueaba antes de borrar al usuario")
+    void deletesTheBlockingDataBeforeTheUser() {
+        User ana = User.builder().id(4L).email(EMAIL).passwordHash("hash").build();
+        given(userRepository.findById(4L)).willReturn(Optional.of(ana));
+        given(passwordEncoder.matches("clave", "hash")).willReturn(true);
+        jakarta.persistence.EntityManager em = mock(jakarta.persistence.EntityManager.class);
+        jakarta.persistence.Query query = mock(jakarta.persistence.Query.class);
+        given(em.createNativeQuery(any(String.class))).willReturn(query);
+        given(query.setParameter(any(String.class), any())).willReturn(query);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", em);
+
+        service.deleteAccount(4L, deleteRequest("clave"));
+
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).anySatisfy(s -> assertThat(s).startsWith("DELETE FROM calendars"));
+        assertThat(sql.getAllValues()).anySatisfy(s -> assertThat(s).startsWith("DELETE FROM user_link_code_history"));
+        assertThat(sql.getAllValues()).anySatisfy(s -> assertThat(s).startsWith("DELETE FROM date_ratings"));
+        assertThat(sql.getAllValues()).anySatisfy(s -> assertThat(s).startsWith("DELETE FROM app_notifications"));
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(query, userRepository);
+        order.verify(query, org.mockito.Mockito.atLeastOnce()).executeUpdate();
+        order.verify(userRepository).delete(ana);
+    }
 }

@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.regex.Pattern;
@@ -743,6 +744,28 @@ public class UserService {
      * RN-06: Doble confirmación (validación de contraseña)
      * RN-07: Eliminación irreversible de todos los datos
      */
+    /**
+     * [eliminar-cuenta] Datos del usuario en tablas que no se borran solas con él: unas lo impiden
+     * (llave NO ACTION: calendarios, historial de códigos, bitácora, eventos de app) y otras no tienen
+     * llave (calificaciones, avisos, planeaciones). El orden respeta las llaves entre ellas.
+     */
+    private static final List<String> PURGE_WITHOUT_CASCADE = List.of(
+        "DELETE FROM calendars WHERE owner_user_id = :userId",
+        "DELETE FROM user_link_code_history WHERE user_id = :userId",
+        "DELETE FROM audit_logs WHERE user_id = :userId",
+        "DELETE FROM app_events WHERE created_by = :userId",
+        "DELETE FROM date_ratings WHERE user_id = :userId",
+        "DELETE FROM app_notifications WHERE user_id = :userId",
+        "DELETE FROM planning_votes WHERE user_id = :userId",
+        "DELETE FROM planning_messages WHERE sender_user_id = :userId",
+        "DELETE FROM planning_sessions WHERE inviter_user_id = :userId OR partner_user_id = :userId");
+
+    private void purgeDataWithoutCascade(Long userId) {
+        for (String sql : PURGE_WITHOUT_CASCADE) {
+            entityManager.createNativeQuery(sql).setParameter("userId", userId).executeUpdate();
+        }
+    }
+
     @Transactional
     public DeleteAccountResponse deleteAccount(Long userId, DeleteAccountRequest request) {
         log.info("Iniciando eliminación de cuenta para usuario ID: {}", userId);
@@ -778,6 +801,12 @@ public class UserService {
             verificationTokenRepository.deleteByUserId(userId);
             log.info("Tokens eliminados para usuario ID: {}", userId);
             
+            // 4b. [eliminar-cuenta] Lo que no se borra en cascada con el usuario. Los calendarios del
+            // teléfono (NO ACTION, aunque estén borrados lógicamente) impedían eliminar la cuenta a
+            // quien ya los había conectado; lo demás son datos suyos que el aviso promete borrar.
+            purgeDataWithoutCascade(userId);
+            log.info("Calendarios, calificaciones, avisos y planeaciones eliminados para usuario ID: {}", userId);
+
             // 5. Eliminar usuario (última operación)
             userRepository.delete(user);
             log.info("Usuario eliminado definitivamente ID: {}", userId);

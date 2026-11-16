@@ -281,6 +281,39 @@ class EventServiceTest {
                 "Ana quitó \"Cena\".");
     }
 
+    // ---------------------------------------------------------------- [evento-ahora]
+    // Prueba con usuarios: «no deja crear eventos un minuto después de la hora actual». Al guardar,
+    // esa hora ya había pasado (llenar el formulario toma más) o el reloj del teléfono iba adelantado.
+
+    private CreateEventRequest startingAt(Instant start) {
+        return CreateEventRequest.builder().title("Café").startDateTime(start.toString())
+                .endDateTime(start.plus(Duration.ofMinutes(10)).toString()).build();
+    }
+
+    @Test
+    @DisplayName("[evento-ahora] un plan que empezó hace un par de minutos todavía se puede crear")
+    void acceptsAStartFromAFewMinutesAgo() {
+        given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));
+        given(linkRepository.findActiveLinkByUserId(CREATOR_ID)).willReturn(Optional.of(link));
+        givenSaveReturnsTheSameEvent();
+
+        service.createEvent(CREATOR_ID, startingAt(Instant.now().minus(Duration.ofMinutes(2))));
+
+        verify(eventRepository).save(any(Event.class));
+    }
+
+    @Test
+    @DisplayName("[evento-ahora] una hora que ya pasó de verdad se rechaza con un mensaje claro")
+    void rejectsAStartThatReallyPassed() {
+        given(userRepository.findActiveById(CREATOR_ID)).willReturn(Optional.of(creator));
+        given(linkRepository.findActiveLinkByUserId(CREATOR_ID)).willReturn(Optional.of(link));
+
+        assertThatThrownBy(() -> service.createEvent(CREATOR_ID, startingAt(Instant.now().minus(Duration.ofMinutes(10)))))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Esa hora ya pasó. Elige una a partir de ahora.");
+        verify(eventRepository, never()).save(any(Event.class));
+    }
+
     // ---------------------------------------------------------------- [reaprobar-edicion]
     // RN-17: tras editar, aprueba quien NO editó, sea o no el creador.
 

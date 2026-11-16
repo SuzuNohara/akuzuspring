@@ -49,6 +49,9 @@ public class EventService {
     private final EventExceptionRepository eventExceptionRepository;
     private final BusyTimeService busyTimes;
 
+    /** [evento-ahora] Cuánto puede haber pasado la hora de inicio al guardar y todavía aceptarse. */
+    static final java.time.Duration START_GRACE = java.time.Duration.ofMinutes(5);
+
     /** [eventos-sin-choques] D4: un plan que se repite se revisa en sus repeticiones de las próximas 4 semanas. */
     private static final java.time.Duration REPEAT_HORIZON = java.time.Duration.ofDays(28);
     private static final java.time.ZoneId MEXICO_ZONE = java.time.ZoneId.of("America/Mexico_City");
@@ -167,10 +170,11 @@ public class EventService {
             throw new BadRequestException("La fecha de inicio debe ser anterior a la fecha de fin");
         }
         
-        // Validar que las fechas son en el futuro
+        // Validar que las fechas son en el futuro. [evento-ahora] Con margen: quien elige «en un
+        // minuto» tarda más en llenar el formulario, o el reloj del teléfono va un poco adelantado.
         Instant now = Instant.now();
-        if (startInstant.isBefore(now)) {
-            throw new BadRequestException("La fecha de inicio debe ser en el futuro");
+        if (startInstant.isBefore(now.minus(START_GRACE))) {
+            throw new BadRequestException("Esa hora ya pasó. Elige una a partir de ahora.");
         }
         
         // Validar duración razonable del evento (no más de 7 días)

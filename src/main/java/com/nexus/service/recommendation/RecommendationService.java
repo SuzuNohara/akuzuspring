@@ -102,17 +102,17 @@ public class RecommendationService {
                 .orElseThrow(() -> new ForbiddenException("Necesitas un vínculo activo para pedir recomendaciones."));
         int radiusKm = ProximityFilter.radiusOrDefault(p.radiusKm());
         validateSlot(userId, partnerOf(link, userId), p.slotStart(), p.slotEnd());
-        IdeaCategory category = parseCategory(p.category());
+        Set<IdeaCategory> categories = parseCategories(p); // [tipo-plan-varios]
         Optional<Borough> borough = boroughOf(p);
         Deadline deadline = Deadline.start(agent.budget().toMillis(), System::nanoTime);
         RecommendationQuery query = withForecast(new RecommendationQuery(
-                p.scope(), p.maxCostMxn(), category, p.slotStart(), p.slotEnd(), referencesOf(p, borough))
+                p.scope(), p.maxCostMxn(), categories, p.slotStart(), p.slotEnd(), referencesOf(p, borough))
                 .withRadiusKm(radiusKm));
         CoupleContext context = contexts.build(userId, link);
         Selection selection = candidates.select(query, context, Set.of(), poolSize());
         Composition composition = composer.compose(query, context, selection.candidates(), STORED, deadline);
         List<WrittenPick> picks = rankedByHistory(link, composition);
-        RecommendationRequest saved = requests.save(newRequest(userId, link, p, category, borough.orElse(null), radiusKm));
+        RecommendationRequest saved = requests.save(newRequest(userId, link, p, categories, borough.orElse(null), radiusKm));
         List<Recommendation> stored = recommendations.saveAll(toRecommendations(saved, picks));
         log.info("Solicitud {}: {} opciones ({}), filtros ampliados {}",
                 saved.getId(), stored.size(), selection.source(), selection.relaxed());
@@ -243,6 +243,23 @@ public class RecommendationService {
         }
     }
 
+    /**
+     * [tipo-plan-varios] Las dimensiones pedidas: las de {@code categories} mas {@code category} (la app
+     * vieja manda solo esa). Vacio = cualquiera.
+     */
+    private static Set<IdeaCategory> parseCategories(RecommendationParams p) {
+        java.util.EnumSet<IdeaCategory> set = java.util.EnumSet.noneOf(IdeaCategory.class);
+        IdeaCategory single = parseCategory(p.category());
+        if (single != null) set.add(single);
+        if (p.categories() != null) {
+            for (String code : p.categories()) {
+                IdeaCategory c = parseCategory(code);
+                if (c != null) set.add(c);
+            }
+        }
+        return set;
+    }
+
     private static IdeaCategory parseCategory(String code) {
         if (code == null || code.isBlank()) {
             return null;
@@ -317,7 +334,7 @@ public class RecommendationService {
     // --- construccion -----------------------------------------------------------------------
 
     private RecommendationRequest newRequest(
-            Long userId, Link link, RecommendationParams p, IdeaCategory category, Borough borough, int radiusKm) {
+            Long userId, Link link, RecommendationParams p, Set<IdeaCategory> categories, Borough borough, int radiusKm) {
         return RecommendationRequest.builder()
                 .requester(users.getReferenceById(userId))
                 .link(link)
@@ -326,7 +343,7 @@ public class RecommendationService {
                 .borough(borough)
                 .scope(p.scope())
                 .maxCostMxn(p.maxCostMxn())
-                .category(category == null ? null : category.name())
+                .category(categories.isEmpty() ? null : categories.stream().map(Enum::name).sorted().collect(Collectors.joining(",")))
                 .slotStart(p.slotStart())
                 .slotEnd(p.slotEnd())
                 .radiusKm(radiusKm)

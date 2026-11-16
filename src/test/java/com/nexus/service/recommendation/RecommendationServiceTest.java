@@ -366,6 +366,35 @@ class RecommendationServiceTest {
             verify(requests, org.mockito.Mockito.times(2)).save(r.capture());
             assertThat(r.getAllValues()).extracting(RecommendationRequest::getRadiusKm).containsExactly(15, 5);
         }
+
+        @Test
+        @DisplayName("[tipo-plan-varios] en individual se pueden pedir varios tipos de plan, como en pareja")
+        void searchesAndStoresSeveralCategories() {
+            RecommendationParams two = new RecommendationParams(ZoneType.NONE, null, null, null, Scope.ANY, 1500, null,
+                    START, END, null, List.of("SOCIAL", "FISICO"));
+            service.request(ANA, two);
+
+            ArgumentCaptor<RecommendationQuery> q = ArgumentCaptor.forClass(RecommendationQuery.class);
+            verify(candidates).select(q.capture(), any(), anySet(), anyInt());
+            assertThat(q.getValue().acceptsCategory(IdeaCategory.SOCIAL)).isTrue();
+            assertThat(q.getValue().acceptsCategory(IdeaCategory.FISICO)).isTrue();
+            assertThat(q.getValue().acceptsCategory(IdeaCategory.INTELECTUAL)).isFalse();
+            ArgumentCaptor<RecommendationRequest> r = ArgumentCaptor.forClass(RecommendationRequest.class);
+            verify(requests).save(r.capture());
+            assertThat(r.getValue().getCategory()).isEqualTo("FISICO,SOCIAL");
+        }
+
+        @Test
+        @DisplayName("[tipo-plan-varios] la app vieja que manda un solo tipo sigue funcionando")
+        void stillAcceptsTheSingleCategory() {
+            RecommendationParams one = new RecommendationParams(ZoneType.NONE, null, null, null, Scope.ANY, 1500, "SOCIAL",
+                    START, END, null);
+            service.request(ANA, one);
+
+            ArgumentCaptor<RecommendationRequest> r = ArgumentCaptor.forClass(RecommendationRequest.class);
+            verify(requests).save(r.capture());
+            assertThat(r.getValue().getCategory()).isEqualTo("SOCIAL");
+        }
     }
 
     @Nested

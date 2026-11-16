@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * CU36 - Lo que pide la persona en la modalidad individual. Solo valores cerrados (RN-32); la
@@ -15,6 +16,8 @@ import java.time.Instant;
  * @param maxCostMxn tope por persona del deslizador, de 0 (solo gratis) a 15 000
  * @param category dimension del bienestar ({@code IdeaCategory}); {@code null} = cualquiera
  * @param radiusKm [rango-distancia] distancia maxima (1, 3, 5, 10 o 15 km); {@code null} = 15
+ * @param categories [tipo-plan-varios] varias dimensiones, como en la planeacion en pareja; se suman a
+ *     {@code category} (que queda para la app vieja). Vacia o {@code null} = cualquiera
  */
 public record RecommendationParams(
         @NotNull ZoneType zoneType,
@@ -26,4 +29,12 @@ public record RecommendationParams(
         String category,
         @NotNull Instant slotStart,
         @NotNull Instant slotEnd,
-        Integer radiusKm) {}
+        Integer radiusKm,
+        List<String> categories) {
+
+    /** La solicitud con un solo tipo de plan (antes de [tipo-plan-varios]). */
+    public RecommendationParams(ZoneType zoneType, String boroughCode, Double lat, Double lon, Scope scope,
+                                int maxCostMxn, String category, Instant slotStart, Instant slotEnd, Integer radiusKm) {
+        this(zoneType, boroughCode, lat, lon, scope, maxCostMxn, category, slotStart, slotEnd, radiusKm, null);
+    }
+}

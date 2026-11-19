@@ -5,6 +5,7 @@ import com.nexus.entity.User;
 import com.nexus.entity.UserProfile;
 import com.nexus.entity.VerificationToken;
 import com.nexus.exception.BadRequestException;
+import com.nexus.exception.EmailUnavailableException;
 import com.nexus.repository.UserRepository;
 import com.nexus.repository.UserProfileRepository;
 import com.nexus.repository.VerificationTokenRepository;
@@ -266,17 +267,16 @@ public class UserService {
         // Crear nuevo token de verificación
         VerificationToken newToken = createEmailVerificationToken(user);
         
-        // Enviar email de forma asíncrona
-        final String userEmail = user.getEmail();
-        final String tokenCode = newToken.getToken();
-        new Thread(() -> {
-            try {
-                emailService.sendVerificationEmail(userEmail, tokenCode);
-                log.info("Email de verificación reenviado a: {}", userEmail);
-            } catch (Exception e) {
-                log.error("Error al reenviar email de verificación a {}: {}", userEmail, e.getMessage());
-            }
-        }).start();
+        // [reenviar-codigo] Se envía aquí mismo: si el correo no sale, la persona lo sabe (antes un hilo
+        // aparte se tragaba el error y la app decía «Te enviamos un código nuevo»). Al fallar se revierte
+        // la transacción, así que el código anterior sigue sirviendo.
+        try {
+            emailService.sendVerificationEmail(user.getEmail(), newToken.getToken());
+            log.info("Email de verificación reenviado a: {}", user.getEmail());
+        } catch (RuntimeException e) {
+            log.error("Error al reenviar email de verificación a {}: {}", user.getEmail(), e.getMessage());
+            throw new EmailUnavailableException(e);
+        }
         
         log.info("Código de verificación generado para: {}", email);
     }
@@ -319,16 +319,14 @@ public class UserService {
         
         verificationTokenRepository.save(resetToken);
         
-        // Enviar email de recuperación de forma asíncrona
-        final String userEmail = user.getEmail();
-        new Thread(() -> {
-            try {
-                emailService.sendPasswordResetEmail(userEmail, resetCode);
-                log.info("Email de recuperación enviado a: {}", userEmail);
-            } catch (Exception e) {
-                log.error("Error al enviar email de recuperación a {}: {}", userEmail, e.getMessage());
-            }
-        }).start();
+        // [reenviar-codigo] Se envía aquí mismo (también al reenviar): si el correo no sale, se avisa.
+        try {
+            emailService.sendPasswordResetEmail(user.getEmail(), resetCode);
+            log.info("Email de recuperación enviado a: {}", user.getEmail());
+        } catch (RuntimeException e) {
+            log.error("Error al enviar email de recuperación a {}: {}", user.getEmail(), e.getMessage());
+            throw new EmailUnavailableException(e);
+        }
         
         log.info("Código de recuperación generado para: {}", email);
     }

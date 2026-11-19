@@ -71,6 +71,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.CONFLICT, "Conflict", "Otra accion cambio esta solicitud. Intenta de nuevo.", request);
     }
 
+    @ExceptionHandler(EmailUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleEmailUnavailable(
+            EmailUnavailableException ex,
+            WebRequest request) {
+        log.error("EmailUnavailableException: {}", ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage());
+        return error(HttpStatus.SERVICE_UNAVAILABLE, "Service Unavailable", ex.getMessage(), request);
+    }
+
     @ExceptionHandler(AgentUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleAgentUnavailable(
             AgentUnavailableException ex,

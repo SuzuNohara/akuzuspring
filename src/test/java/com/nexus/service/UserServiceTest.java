@@ -40,6 +40,7 @@ class UserServiceTest {
     private final VerificationTokenRepository verificationTokenRepository =
             mock(VerificationTokenRepository.class);
     private final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
+    private final EmailService emailService = mock(EmailService.class);
 
     private final UserService service =
             new UserService(
@@ -49,7 +50,7 @@ class UserServiceTest {
                     mock(LinkRepository.class),
                     mock(LinkCodeRepository.class),
                     passwordEncoder,
-                    mock(EmailService.class));
+                    emailService);
 
     private static RegisterRequest.RegisterRequestBuilder validRegistration() {
         return RegisterRequest.builder()
@@ -285,5 +286,49 @@ class UserServiceTest {
         assertThat(unverified.getEmailConfirmed()).isTrue();
         assertThat(unverified.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(unverified.getPasswordHash()).isEqualTo("NEW_HASH");
+    }
+
+    @Test
+    @DisplayName("[reenviar-codigo] resending the verification code says so when the email could not be sent")
+    void resendingTheVerificationCodeFailsLoudlyWhenTheEmailCannotBeSent() {
+        User unverified = User.builder().id(4L).email(EMAIL).emailConfirmed(false).build();
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(unverified));
+        given(verificationTokenRepository.save(any(VerificationToken.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.BDDMockito.willThrow(new RuntimeException("Authentication failed"))
+                .given(emailService).sendVerificationEmail(org.mockito.ArgumentMatchers.eq(EMAIL), any());
+
+        assertThatThrownBy(() -> service.resendVerificationCode(EMAIL))
+                .isInstanceOf(com.nexus.exception.EmailUnavailableException.class)
+                .hasMessageContaining("No pudimos enviar el correo");
+    }
+
+    @Test
+    @DisplayName("[reenviar-codigo] asking for a reset code says so when the email could not be sent")
+    void askingForAResetCodeFailsLoudlyWhenTheEmailCannotBeSent() {
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(verifiedUser().build()));
+        given(verificationTokenRepository.save(any(VerificationToken.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+        org.mockito.BDDMockito.willThrow(new RuntimeException("Authentication failed"))
+                .given(emailService).sendPasswordResetEmail(org.mockito.ArgumentMatchers.eq(EMAIL), any());
+
+        assertThatThrownBy(() -> service.forgotPassword(EMAIL))
+                .isInstanceOf(com.nexus.exception.EmailUnavailableException.class)
+                .hasMessageContaining("No pudimos enviar el correo");
+    }
+
+    @Test
+    @DisplayName("[reenviar-codigo] the resent verification code is the one emailed")
+    void theResentVerificationCodeIsTheOneEmailed() {
+        User unverified = User.builder().id(4L).email(EMAIL).emailConfirmed(false).build();
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(unverified));
+        given(verificationTokenRepository.save(any(VerificationToken.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        service.resendVerificationCode(EMAIL);
+
+        ArgumentCaptor<VerificationToken> saved = ArgumentCaptor.forClass(VerificationToken.class);
+        verify(verificationTokenRepository).save(saved.capture());
+        verify(emailService).sendVerificationEmail(EMAIL, saved.getValue().getToken());
     }
 }

@@ -247,4 +247,43 @@ class UserServiceTest {
         order.verify(query, org.mockito.Mockito.atLeastOnce()).executeUpdate();
         order.verify(userRepository).delete(ana);
     }
+
+    @Test
+    @DisplayName("[recuperar-sin-confirmar] should send a reset code even if the email is not confirmed yet")
+    void shouldSendAResetCodeEvenIfTheEmailIsNotConfirmedYet() {
+        User unverified = User.builder().id(4L).email(EMAIL).emailConfirmed(false)
+                .accountStatus(AccountStatus.PENDING_VERIFICATION).build();
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(unverified));
+        given(verificationTokenRepository.save(any(VerificationToken.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        service.forgotPassword(EMAIL);
+
+        ArgumentCaptor<VerificationToken> saved = ArgumentCaptor.forClass(VerificationToken.class);
+        verify(verificationTokenRepository).save(saved.capture());
+        assertThat(saved.getValue().getPurpose()).isEqualTo(VerificationToken.TokenPurpose.PASSWORD_RESET);
+    }
+
+    @Test
+    @DisplayName("[recuperar-sin-confirmar] resetting with the emailed code also confirms the email")
+    void resettingWithTheEmailedCodeAlsoConfirmsTheEmail() {
+        User unverified = User.builder().id(4L).email(EMAIL).emailConfirmed(false)
+                .accountStatus(AccountStatus.PENDING_VERIFICATION).build();
+        VerificationToken token = VerificationToken.builder().user(unverified).token("123456")
+                .purpose(VerificationToken.TokenPurpose.PASSWORD_RESET)
+                .expiresAt(Instant.now().plusSeconds(600)).build();
+        given(userRepository.findByEmail(EMAIL)).willReturn(Optional.of(unverified));
+        given(verificationTokenRepository.findLatestValidToken(
+                        org.mockito.ArgumentMatchers.eq(4L),
+                        org.mockito.ArgumentMatchers.eq(VerificationToken.TokenPurpose.PASSWORD_RESET),
+                        any(Instant.class)))
+                .willReturn(Optional.of(token));
+        given(passwordEncoder.encode(VALID_PASSWORD)).willReturn("NEW_HASH");
+
+        service.resetPassword(EMAIL, "123456", VALID_PASSWORD, VALID_PASSWORD);
+
+        assertThat(unverified.getEmailConfirmed()).isTrue();
+        assertThat(unverified.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(unverified.getPasswordHash()).isEqualTo("NEW_HASH");
+    }
 }

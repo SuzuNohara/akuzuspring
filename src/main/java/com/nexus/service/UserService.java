@@ -294,11 +294,9 @@ public class UserService {
         User user = userRepository.findByEmail(email.toLowerCase().trim())
             .orElseThrow(() -> new BadRequestException("Si el correo está registrado, te enviamos un código. Revisa también la carpeta de spam."));
         
-        // Verificar que la cuenta esté activa
-        if (!user.getEmailConfirmed()) {
-            throw new BadRequestException("Primero confirma tu correo para poder restablecer la contraseña.");
-        }
-        
+        // [recuperar-sin-confirmar] Ya no se exige el correo confirmado: el codigo llega a ese correo, asi
+        // que usarlo en resetPassword prueba que es suyo y de paso confirma la cuenta.
+
         // Invalidar tokens anteriores de reset de contraseña no consumidos
         verificationTokenRepository
             .findByUserIdAndPurposeAndConsumedAtIsNull(
@@ -449,6 +447,13 @@ public class UserService {
         
         // Actualizar contraseña (RN-01 ya validada en DTO)
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // [recuperar-sin-confirmar] El codigo llego a su correo: eso tambien confirma la cuenta.
+        if (!Boolean.TRUE.equals(user.getEmailConfirmed())) {
+            user.setEmailConfirmed(true);
+            if (user.getAccountStatus() == null || user.getAccountStatus() == AccountStatus.PENDING_VERIFICATION) {
+                user.setAccountStatus(AccountStatus.ACTIVE);
+            }
+        }
         userRepository.save(user);
         
         // Marcar token como consumido
